@@ -23,8 +23,11 @@ import android.os.Build;
 import android.os.SystemProperties;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.Slog;
 
 public class AmbientDisplayConfiguration {
+
+    private static final String TAG = "AmbientDisplayConfiguration";
 
     private final Context mContext;
 
@@ -38,7 +41,8 @@ public class AmbientDisplayConfiguration {
                 || pulseOnDoubleTapEnabled(user)
                 || pulseOnLongPressEnabled(user)
                 || pulseOnMedia(user)
-                || alwaysOnEnabled(user);
+                || alwaysOnEnabled(user)
+                || alwaysOnChargerEnabled(user);
     }
 
     public boolean available() {
@@ -105,7 +109,8 @@ public class AmbientDisplayConfiguration {
     }
 
     public boolean alwaysOnEnabled(int user) {
-        return boolSettingDefaultOn(Settings.Secure.DOZE_ALWAYS_ON, user) && alwaysOnAvailable()
+        //Slog.e(TAG, "Doze alwaysOnEnabled:", new Throwable());
+        return boolSettingDefaultOff(Settings.Secure.DOZE_ALWAYS_ON, user) && alwaysOnAvailable()
                 && !accessibilityInversionEnabled(user);
     }
 
@@ -138,6 +143,11 @@ public class AmbientDisplayConfiguration {
         return SystemProperties.getBoolean("debug.doze.aod", false) && Build.IS_DEBUGGABLE;
     }
 
+    public boolean alwaysOnChargerEnabled(int user) {
+        //Slog.e(TAG, "Doze alwaysOnEnabled:", new Throwable());
+        return boolSettingDefaultOff(Settings.Secure.DOZE_ALWAYS_ON_CHARGER, user) && alwaysOnAvailable()
+                && !accessibilityInversionEnabled(user);
+    }
 
     private boolean boolSettingDefaultOn(String name, int user) {
         return boolSetting(name, user, 1);

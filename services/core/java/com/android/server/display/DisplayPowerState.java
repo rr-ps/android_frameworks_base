@@ -135,9 +135,9 @@ final class DisplayPowerState {
      */
     public void setScreenState(int state) {
         if (mScreenState != state) {
-            if (DEBUG) {
+            //if (DEBUG) {
                 Slog.d(TAG, "setScreenState: state=" + state);
-            }
+            //}
 
             mScreenState = state;
             mScreenReady = false;
@@ -159,9 +159,9 @@ final class DisplayPowerState {
      */
     public void setScreenBrightness(int brightness) {
         if (mScreenBrightness != brightness) {
-            if (DEBUG) {
+            //if (DEBUG) {
                 Slog.d(TAG, "setScreenBrightness: brightness=" + brightness);
-            }
+            //}
 
             mScreenBrightness = brightness;
             if (mScreenState != Display.STATE_OFF) {
@@ -417,7 +417,10 @@ final class DisplayPowerState {
                 final boolean stateChanged;
                 final int backlight;
                 final boolean backlightChanged;
+                final int currState;
                 synchronized (mLock) {
+
+                    currState = mActualState;
                     state = mPendingState;
                     stateChanged = (state != mActualState);
                     backlight = mPendingBacklight;
@@ -440,10 +443,18 @@ final class DisplayPowerState {
                     mActualBacklight = backlight;
                 }
 
-                // Apply pending change.
                 if (DEBUG) {
-                    Slog.d(TAG, "Updating screen state: state="
-                            + Display.stateToString(state) + ", backlight=" + backlight);
+                    Slog.d(TAG, "Updating screen state: state=" + Display.stateToString(state) + ", backlight=" + backlight);
+                }
+                if( currState == Display.STATE_DOZE || currState == Display.STATE_DOZE_SUSPEND ) {
+                    if( state == Display.STATE_ON ) {
+                        if (DEBUG) Slog.i(TAG, "Turning screen on from DOZE");
+                        mBlanker.requestDisplayState(Display.STATE_OFF, backlight);
+                    }
+                } 
+                if( currState == Display.STATE_OFF && ( state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND ) ) { 
+                    if (DEBUG) Slog.i(TAG, "Turning DOZE after OFF");
+                    mBlanker.requestDisplayState(Display.STATE_ON, backlight);
                 }
                 mBlanker.requestDisplayState(state, backlight);
             }

@@ -8647,6 +8647,12 @@ public final class Settings {
         public static final String DOZE_ALWAYS_ON = "doze_always_on";
 
         /**
+         * Whether doze should be always on while on charger.
+         * @hide
+         */
+        public static final String DOZE_ALWAYS_ON_CHARGER = "doze_always_on_charger";
+
+        /**
          * Whether the device should pulse on pick up gesture.
          * @hide
          */

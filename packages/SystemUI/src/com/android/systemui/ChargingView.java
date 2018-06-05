@@ -103,7 +103,7 @@ public class ChargingView extends ImageView implements
     private boolean deviceWillWakeUpWhenPluggedIn() {
         boolean plugTurnsOnScreen = getResources().getBoolean(
                 com.android.internal.R.bool.config_unplugTurnsOnScreen);
-        boolean aod = mConfig.alwaysOnEnabled(UserHandle.USER_CURRENT);
+        boolean aod = mConfig.alwaysOnEnabled(UserHandle.USER_CURRENT) || mConfig.alwaysOnChargerEnabled(UserHandle.USER_CURRENT);
         return !aod && plugTurnsOnScreen;
     }
 

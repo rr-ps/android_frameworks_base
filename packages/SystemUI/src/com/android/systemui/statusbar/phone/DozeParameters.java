@@ -120,7 +120,7 @@ public class DozeParameters {
     }
 
     public boolean getAlwaysOn() {
-        return mAmbientDisplayConfiguration.alwaysOnEnabled(UserHandle.USER_CURRENT);
+        return mAmbientDisplayConfiguration.alwaysOnEnabled(UserHandle.USER_CURRENT) || mAmbientDisplayConfiguration.alwaysOnChargerEnabled(UserHandle.USER_CURRENT);
     }
 
     private boolean getBoolean(String propName, int resId) {

@@ -360,7 +360,7 @@ public final class DreamManagerService extends SystemService {
                 && mCurrentDreamCanDoze == canDoze
                 && mCurrentDreamUserId == userId) {
             Slog.i(TAG, "Already in target dream.");
-            return;
+            //return;
         }
 
         stopDreamLocked(true /*immediate*/);

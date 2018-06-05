@@ -19,8 +19,15 @@ package com.android.systemui.doze;
 import android.annotation.MainThread;
 import android.os.Trace;
 import android.os.UserHandle;
+import android.os.SystemProperties;
+
 import android.util.Log;
 import android.view.Display;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 
 import com.android.internal.hardware.AmbientDisplayConfiguration;
 import com.android.internal.util.Preconditions;
@@ -115,6 +122,9 @@ public class DozeMachine {
     private State mState = State.UNINITIALIZED;
     private int mPulseReason;
     private boolean mWakeLockHeldForCurrentState = false;
+    private boolean mCharging = false;
+    private Object  mLock = new Object();
+
 
     public DozeMachine(Service service, AmbientDisplayConfiguration config,
             WakeLock wakeLock) {
@@ -204,6 +214,15 @@ public class DozeMachine {
     /** Requests the PowerManager to wake up now. */
     public void wakeUp() {
         mDozeService.requestWakeUp();
+    }
+
+
+    private void updateChargingLocked(boolean charging) {
+        if (!charging && mCharging) {
+            mCharging = false;
+        } else if (charging) {
+            mCharging = charging;
+        }
     }
 
     private boolean isExecutingTransition() {
@@ -320,13 +339,33 @@ public class DozeMachine {
         switch (state) {
             case INITIALIZED:
             case DOZE_PULSE_DONE:
-                transitionTo(mConfig.alwaysOnEnabled(UserHandle.USER_CURRENT)
+                transitionTo(alwaysOnEnabled(UserHandle.USER_CURRENT)
                         ? DozeMachine.State.DOZE_AOD : DozeMachine.State.DOZE,
                         DozeLog.PULSE_REASON_NONE);
                 break;
             default:
                 break;
         }
+    }
+
+    private boolean alwaysOnEnabled(int handle) {
+        
+        if( mConfig.alwaysOnEnabled(UserHandle.USER_CURRENT) ) {    
+            Log.i(TAG, "Always on enabled");
+            return true;
+        }
+        synchronized (mLock) {
+            mCharging = SystemProperties.getBoolean("power.is_powered", false);
+            Log.i(TAG, "mCharging=" + mCharging);
+            if( mCharging ) {
+                Log.i(TAG, "On charger");
+                if(mConfig.alwaysOnChargerEnabled(UserHandle.USER_CURRENT) ) {
+                    Log.i(TAG, "Always On on charger enabled");
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Dumps the current state */
