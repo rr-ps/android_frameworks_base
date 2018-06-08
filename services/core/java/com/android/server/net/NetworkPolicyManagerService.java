@@ -194,6 +194,7 @@ import com.android.server.LocalServices;
 import com.android.server.ServiceThread;
 import com.android.server.SystemConfig;
 import com.android.server.power.BatterySaverPolicy.ServiceType;
+import com.android.server.power.PowerManagerService;
 
 import libcore.io.IoUtils;
 
@@ -3183,6 +3184,9 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
                     uidRules.put(mUidState.keyAt(i), FIREWALL_RULE_ALLOW);
                 }
             }
+
+            uidRules.put(PowerManagerService.getGmsUid(), FIREWALL_RULE_ALLOW); //Always allow GMS to access network
+
             setUidFirewallRulesUL(chain, uidRules, CHAIN_TOGGLE_ENABLE);
         } else {
             setUidFirewallRulesUL(chain, null, CHAIN_TOGGLE_DISABLE);
@@ -3207,6 +3211,9 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
      */
     private boolean isWhitelistedBatterySaverUL(int uid, boolean deviceIdleMode) {
         final int appId = UserHandle.getAppId(uid);
+    
+        if( appId == UserHandle.getAppId(PowerManagerService.getGmsUid()) ) return true; // Always allow GMS to access network
+
         boolean isWhitelisted = mPowerSaveTempWhitelistAppIds.get(appId)
                 || mPowerSaveWhitelistAppIds.get(appId);
         if (!deviceIdleMode) {
