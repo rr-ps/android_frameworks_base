@@ -162,18 +162,15 @@ public class SystemSensorManager extends SensorManager {
                 "the sensor listeners size has exceeded the maximum limit " +
                 MAX_LISTENER_COUNT);
         }
+
         if (Settings.System.getInt(mContext.getContentResolver(),
                 Settings.System.SENSOR_BLOCK, 0) == 1) {
             if (sensor.getType() == Sensor.TYPE_SIGNIFICANT_MOTION) {
                 String pkgName = mContext.getPackageName();
-                for (String blockedPkgName : mContext.getResources().getStringArray(
-                        com.android.internal.R.array.config_blockPackagesSensorDrain)) {
-                    if (pkgName.equals(blockedPkgName)) {
-                        Log.w(TAG, "Preventing " + pkgName + "from draining battery using " +
-                                "significant motion sensor");
-                        return false;
-                    }
-                }
+                Log.w(TAG, "Preventing " + pkgName + " from draining battery using " +
+                       "significant motion sensor");
+                Log.w(TAG,"Here :", new Throwable());
+                return true;
             }
         }
 
@@ -234,6 +231,17 @@ public class SystemSensorManager extends SensorManager {
         if (listener == null) throw new IllegalArgumentException("listener cannot be null");
 
         if (sensor.getReportingMode() != Sensor.REPORTING_MODE_ONE_SHOT) return false;
+
+        if (Settings.System.getInt(mContext.getContentResolver(),
+                Settings.System.SENSOR_BLOCK, 0) == 1) {
+            if (sensor.getType() == Sensor.TYPE_SIGNIFICANT_MOTION) {
+                String pkgName = mContext.getPackageName();
+                Log.w(TAG, "Preventing " + pkgName + " from draining battery using " +
+                       "significant motion sensor");
+                Log.w(TAG,"Here :", new Throwable());
+                return true;
+            }
+        }
 
         if (mTriggerListeners.size() >= MAX_LISTENER_COUNT) {
             throw new IllegalStateException("request failed, " +
