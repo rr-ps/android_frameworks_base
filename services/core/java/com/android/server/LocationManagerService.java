@@ -92,6 +92,7 @@ import android.os.SystemClock;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.EventLog;
@@ -147,7 +148,8 @@ public class LocationManagerService extends ILocationManager.Stub {
     private static final long HIGH_POWER_INTERVAL_MS = 5 * 60 * 1000;
 
     private static final int FOREGROUND_IMPORTANCE_CUTOFF
-        = ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE;
+        = ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+//        = ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE;
 
     // default background throttling interval if not overriden in settings
     private static final long DEFAULT_BACKGROUND_THROTTLE_INTERVAL_MS = 30 * 60 * 1000;
@@ -412,7 +414,7 @@ public class LocationManagerService extends ILocationManager.Stub {
     }
 
     private void onUidImportanceChanged(int uid, int importance) {
-        boolean foreground = isImportanceForeground(importance);
+        boolean foreground = isImportanceForeground(uid, importance);
         HashSet<String> affectedProviders = new HashSet<>(mRecordsByProvider.size());
         synchronized (mLock) {
             for (Entry<String, ArrayList<UpdateRecord>> entry
@@ -464,7 +466,33 @@ public class LocationManagerService extends ILocationManager.Stub {
         }
     }
 
-    private static boolean isImportanceForeground(int importance) {
+    //private static boolean isImportanceForeground(int importance) {
+    //    return importance <= FOREGROUND_IMPORTANCE_CUTOFF;
+    //}
+
+    private static boolean isImportanceForeground(String packageName, int importance) {
+        Log.d(TAG, "isImportanceForeground: package=" + packageName);
+   	    if( SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
+            if( packageName != null && ( 
+                    packageName.equals("android") || 
+                    packageName.equals("com.qualcomm.location") ) )  {
+                Log.d(TAG, "isImportanceForeground: force sysytem to background");
+                return false;
+            }
+        }
+        if( importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE ) return true;
+        return importance <= FOREGROUND_IMPORTANCE_CUTOFF;
+    }
+
+    private static boolean isImportanceForeground(int uid, int importance) {
+        Log.d(TAG, "isImportanceForeground: uid=" + uid);
+   	    if( SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
+            if( uid == Process.SYSTEM_UID ) { 
+                Log.d(TAG, "isImportanceForeground: force sysytem to background");
+                return false;
+            }
+        }
+        if( importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE ) return true;
         return importance <= FOREGROUND_IMPORTANCE_CUTOFF;
     }
 
@@ -1826,11 +1854,15 @@ public class LocationManagerService extends ILocationManager.Stub {
 
     private boolean isThrottlingExemptLocked(Identity identity) {
         if (identity.mUid == Process.SYSTEM_UID) {
-            return true;
+	        if( !SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
+                return true;
+            }
         }
 
         if (mBackgroundThrottlePackageWhitelist.contains(identity.mPackageName)) {
-            return true;
+       	    if( !SystemProperties.getBoolean("persist.ps.gpsthrottle", false) ) {
+                return true;
+            }
         }
 
         for (LocationProviderProxy provider : mProxyProviders) {
@@ -1859,7 +1891,7 @@ public class LocationManagerService extends ILocationManager.Stub {
             mRealRequest = request;
             mRequest = request;
             mReceiver = receiver;
-            mIsForegroundUid = isImportanceForeground(
+            mIsForegroundUid = isImportanceForeground(mReceiver.mIdentity.mPackageName,
                     mActivityManager.getPackageImportance(mReceiver.mIdentity.mPackageName));
 
             ArrayList<UpdateRecord> records = mRecordsByProvider.get(provider);
@@ -2306,7 +2338,7 @@ public class LocationManagerService extends ILocationManager.Stub {
             long identity = Binder.clearCallingIdentity();
             try {
                 if (isThrottlingExemptLocked(callerIdentity)
-                        || isImportanceForeground(
+                        || isImportanceForeground(packageName,
                                 mActivityManager.getPackageImportance(packageName))) {
                     return mGnssMeasurementsProvider.addListener(listener);
                 }
@@ -2343,7 +2375,7 @@ public class LocationManagerService extends ILocationManager.Stub {
             long identity = Binder.clearCallingIdentity();
             try {
                 if (isThrottlingExemptLocked(callerIdentity)
-                        || isImportanceForeground(
+                        || isImportanceForeground(packageName,
                                 mActivityManager.getPackageImportance(packageName))) {
                     return mGnssNavigationMessageProvider.addListener(listener);
                 }
