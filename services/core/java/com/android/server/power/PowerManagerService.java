@@ -129,7 +129,7 @@ public final class PowerManagerService extends SystemService
     private static final String TAG = "PowerManagerService";
 
     private static final boolean DEBUG = false;
-    private static final boolean DEBUG_SPEW = DEBUG && true;
+    private static final boolean DEBUG_SPEW = DEBUG && false;
 
     // Message: Sent when a user activity timeout occurs to update the power state.
     private static final int MSG_USER_ACTIVITY_TIMEOUT = 1;
@@ -208,6 +208,10 @@ public final class PowerManagerService extends SystemService
 
     // System property indicating that the screen should remain off until an explicit user action
     private static final String SYSTEM_PROPERTY_QUIESCENT = "ro.boot.quiescent";
+
+    private static final String SYSTEM_PROPERTY_PM_HIDE_GMS = "persist.pm.hide_gms";
+
+    private static final String SYSTEM_PROPERTY_PM_FORCE_GMS = "persist.pm.force_gms";
 
     // System Property indicating that retail demo mode is currently enabled.
     private static final String SYSTEM_PROPERTY_RETAIL_DEMO_ENABLED = "sys.retaildemo.enabled";
@@ -295,6 +299,10 @@ public final class PowerManagerService extends SystemService
     // go negative before turning the screen on.
     private boolean mRequestWaitForNegativeProximity;
 
+    private boolean mHideGMS = false;
+
+    private boolean mForceGMS = false;
+
     // Timestamp of the last time the device was awoken or put to sleep.
     private long mLastWakeTime;
     private long mLastSleepTime;
@@ -316,6 +324,10 @@ public final class PowerManagerService extends SystemService
     // The desired display power state.  The actual state may lag behind the
     // requested because it is updated asynchronously by the display power controller.
     private final DisplayPowerRequest mDisplayPowerRequest = new DisplayPowerRequest();
+    private DisplayPowerRequest mPreviousDisplayPowerRequest = null;
+
+    private int mPreviousDisplayPowerPolicy;
+
 
     // True if the display power state has been fully applied, which means the display
     // is actually on or actually off or whatever was requested.
@@ -707,6 +719,9 @@ public final class PowerManagerService extends SystemService
 
             sQuiescent = SystemProperties.get(SYSTEM_PROPERTY_QUIESCENT, "0").equals("1");
 
+            mHideGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_HIDE_GMS, "0").equals("1");
+            mForceGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_FORCE_GMS, "0").equals("1");
+
             nativeInit();
             nativeSetAutoSuspend(false);
             nativeSetInteractive(true);
@@ -858,6 +873,9 @@ public final class PowerManagerService extends SystemService
         resolver.registerContentObserver(Settings.Secure.getUriFor(
                 Settings.Secure.DOZE_ALWAYS_ON),
                 false, mSettingsObserver, UserHandle.USER_ALL);
+        //resolver.registerContentObserver(Settings.Secure.getUriFor(
+        //        Settings.Secure.DOZE_ALWAYS_ON_CHARGER),
+        //        false, mSettingsObserver, UserHandle.USER_ALL);
         resolver.registerContentObserver(Settings.Secure.getUriFor(
                 Settings.Secure.DOUBLE_TAP_TO_WAKE),
                 false, mSettingsObserver, UserHandle.USER_ALL);
@@ -1611,6 +1629,7 @@ public final class PowerManagerService extends SystemService
 
             // Skip dozing if requested.
             if ((flags & PowerManager.GO_TO_SLEEP_FLAG_NO_DOZE) != 0) {
+                Slog.i(TAG, "GO_TO_SLEEP_FLAG_NO_DOZE reallyGoToSleepNoUpdateLocked");
                 reallyGoToSleepNoUpdateLocked(eventTime, uid);
             }
         } finally {
@@ -1803,6 +1822,12 @@ public final class PowerManagerService extends SystemService
             mBatteryLevel = mBatteryManagerInternal.getBatteryLevel();
             mBatteryLevelLow = mBatteryManagerInternal.getBatteryLevelLow();
 
+	        if(mIsPowered) {
+		        SystemProperties.set("power.is_powered", "1");
+    	    } else {
+    		    SystemProperties.set("power.is_powered", "0");
+    	    }
+
             if (DEBUG_SPEW) {
                 Slog.d(TAG, "updateIsPoweredLocked: wasPowered=" + wasPowered
                         + ", mIsPowered=" + mIsPowered
@@ -1813,6 +1838,14 @@ public final class PowerManagerService extends SystemService
 
             if (wasPowered != mIsPowered || oldPlugType != mPlugType) {
                 mDirty |= DIRTY_IS_POWERED;
+
+
+                mSandmanSummoned = true;
+
+                if( mWakefulness == WAKEFULNESS_ASLEEP ) {
+                    setWakefulnessLocked(WAKEFULNESS_DOZING, 0);
+                }
+
 
                 // Update wireless dock detection state.
                 final boolean dockedOnWirelessCharger = mWirelessChargerDetector.update(
@@ -2254,6 +2287,7 @@ public final class PowerManagerService extends SystemService
      * Determines whether to post a message to the sandman to update the dream state.
      */
     private void updateDreamLocked(int dirty, boolean displayBecameReady) {
+        Slog.i(TAG, "updateDreamLocked : dirty=" + dirty + ", displayBecameReady=" + displayBecameReady + ", mDisplayReady=" + mDisplayReady);
         if ((dirty & (DIRTY_WAKEFULNESS
                 | DIRTY_USER_ACTIVITY
                 | DIRTY_WAKE_LOCKS
@@ -2270,6 +2304,7 @@ public final class PowerManagerService extends SystemService
     }
 
     private void scheduleSandmanLocked() {
+        Slog.i(TAG, "Schedule sandman : mSandmanScheduled=" + mSandmanScheduled);
         if (!mSandmanScheduled) {
             mSandmanScheduled = true;
             Message msg = mHandler.obtainMessage(MSG_SANDMAN);
@@ -2286,6 +2321,9 @@ public final class PowerManagerService extends SystemService
      * the device will wake or go to sleep in the meantime so we have to handle that case.
      */
     private void handleSandman() { // runs on handler thread
+
+        //Slog.i(TAG, "handleSandman doze");
+
         // Handle preconditions.
         final boolean startDreaming;
         final int wakefulness;
@@ -2295,7 +2333,10 @@ public final class PowerManagerService extends SystemService
             if (mSandmanSummoned && mDisplayReady) {
                 startDreaming = canDreamLocked() || canDozeLocked();
                 mSandmanSummoned = false;
+                //Slog.i(TAG, "handleSandman: doze canDreamLocked=" + canDreamLocked() + ", canDozeLocked=" + canDozeLocked());
+                //Slog.i(TAG, "handleSandman: doze startDreaming=" + startDreaming);
             } else {
+                //Slog.i(TAG, "handleSandman: doze startDreaming=false");
                 startDreaming = false;
             }
         }
@@ -2307,12 +2348,15 @@ public final class PowerManagerService extends SystemService
         if (mDreamManager != null) {
             // Restart the dream whenever the sandman is summoned.
             if (startDreaming) {
+                //Slog.i(TAG, "handleSandman: doze Restart the dream whenever the sandman is summoned. wakefulnes=" + wakefulness);
                 mDreamManager.stopDream(false /*immediate*/);
                 mDreamManager.startDream(wakefulness == WAKEFULNESS_DOZING);
             }
             isDreaming = mDreamManager.isDreaming();
+            //Slog.i(TAG, "handleSandman: doze mDreamManager.isDreaming()=" + isDreaming);
         } else {
             isDreaming = false;
+            //Slog.i(TAG, "handleSandman: doze isDreaming=" + isDreaming);
         }
 
         // Update dream state.
@@ -2330,6 +2374,7 @@ public final class PowerManagerService extends SystemService
             // If preconditions changed, wait for the next iteration to determine
             // whether the dream should continue (or be restarted).
             if (mSandmanSummoned || mWakefulness != wakefulness) {
+                //Slog.i(TAG, "handleSandman: doze If preconditions changed, wait for the next iteration to determine");
                 return; // wait for next cycle
             }
 
@@ -2365,8 +2410,11 @@ public final class PowerManagerService extends SystemService
                 }
             } else if (wakefulness == WAKEFULNESS_DOZING) {
                 if (isDreaming) {
+                    //Slog.i(TAG, "handleSandman: continue dozing");
                     return; // continue dozing
                 }
+
+                //Slog.i(TAG, "handleSandman: not dozing, going to sleep");
 
                 // Doze has ended or will be stopped.  Update the power state.
                 reallyGoToSleepNoUpdateLocked(SystemClock.uptimeMillis(), Process.SYSTEM_UID);
@@ -2376,6 +2424,7 @@ public final class PowerManagerService extends SystemService
 
         // Stop dream.
         if (isDreaming) {
+            //Slog.i(TAG, "handleSandman: doze stopDream");
             mDreamManager.stopDream(false /*immediate*/);
         }
     }
@@ -2435,6 +2484,9 @@ public final class PowerManagerService extends SystemService
                 | DIRTY_ACTUAL_DISPLAY_POWER_STATE_UPDATED | DIRTY_BOOT_COMPLETED
                 | DIRTY_SETTINGS | DIRTY_SCREEN_BRIGHTNESS_BOOST | DIRTY_VR_MODE_CHANGED |
                 DIRTY_QUIESCENT)) != 0) {
+
+            mPreviousDisplayPowerPolicy = mDisplayPowerRequest.policy;
+
             mDisplayPowerRequest.policy = getDesiredScreenPolicyLocked();
 
             // Determine appropriate screen brightness and auto-brightness adjustments.
@@ -2487,7 +2539,7 @@ public final class PowerManagerService extends SystemService
 
             updatePowerRequestFromBatterySaverPolicy(mDisplayPowerRequest);
 
-            if (mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_DOZE) {
+            if (mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_DOZE ) {
                 mDisplayPowerRequest.dozeScreenState = mDozeScreenStateOverrideFromDreamManager;
                 if (mDisplayPowerRequest.dozeScreenState == Display.STATE_DOZE_SUSPEND
                         && (mWakeLockSummary & WAKE_LOCK_DRAW) != 0) {
@@ -2506,9 +2558,15 @@ public final class PowerManagerService extends SystemService
                 }
             }
 
+	        if( mPreviousDisplayPowerPolicy != mDisplayPowerRequest.policy ) onDisplayPowerPolicyChanging();
+
             mDisplayReady = mDisplayManagerInternal.requestPowerState(mDisplayPowerRequest,
-                    mRequestWaitForNegativeProximity);
+                mRequestWaitForNegativeProximity);
             mRequestWaitForNegativeProximity = false;
+
+	        if( mPreviousDisplayPowerPolicy != mDisplayPowerRequest.policy ) onDisplayPowerPolicyChanged();
+
+            mPreviousDisplayPowerRequest = mDisplayPowerRequest;
 
             if ((dirty & DIRTY_QUIESCENT) != 0) {
                 sQuiescent = false;
@@ -2526,6 +2584,29 @@ public final class PowerManagerService extends SystemService
             }
         }
         return mDisplayReady && !oldDisplayReady;
+    }
+
+
+    private void onDisplayPowerPolicyChanging() {
+        mHideGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_HIDE_GMS, "0").equals("1");
+        mForceGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_FORCE_GMS, "0").equals("1");
+    }
+
+    boolean suspended = false;
+    private void onDisplayPowerPolicyChanged() {
+        if( mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF ) {
+            if( !suspended ) {
+                //Slog.d(TAG, "onDisplayPowerPolicyChanged: suspend");
+                //((SystemSensorManager)mSensorManager).suspend(true);
+                suspended = true;
+            }
+        } else {
+            if( suspended ) {
+                //Slog.d(TAG, "onDisplayPowerPolicyChanged: resume");
+                //((SystemSensorManager)mSensorManager).resume();
+                suspended = false;
+            }
+        }
     }
 
     private void updateScreenBrightnessBoostLocked(int dirty) {
@@ -2604,6 +2685,7 @@ public final class PowerManagerService extends SystemService
 
         @Override
         public void onStateChanged() {
+            Slog.d(TAG, "onDisplayStateChanged");
             synchronized (mLock) {
                 mDirty |= DIRTY_ACTUAL_DISPLAY_POWER_STATE_UPDATED;
                 updatePowerStateLocked();
@@ -2635,6 +2717,9 @@ public final class PowerManagerService extends SystemService
             // This method is only needed to support legacy display blanking behavior
             // where the display's power state is coupled to suspend or to the power HAL.
             // The order of operations matters here.
+
+            Slog.d(TAG, "onDisplayStateChange: " + state);
+
             synchronized (mLock) {
                 if (mDisplayState != state) {
                     mDisplayState = state;
@@ -2685,7 +2770,7 @@ public final class PowerManagerService extends SystemService
      * This function must have no other side-effects.
      */
     private void updateSuspendBlockerLocked() {
-        final boolean needWakeLockSuspendBlocker = ((mWakeLockSummary & WAKE_LOCK_CPU) != 0);
+        final boolean needWakeLockSuspendBlocker = mIsPowered || ((mWakeLockSummary & WAKE_LOCK_CPU) != 0);
         final boolean needDisplaySuspendBlocker = needDisplaySuspendBlockerLocked();
         final boolean autoSuspend = !needDisplaySuspendBlocker;
         final boolean interactive = mDisplayPowerRequest.isBrightOrDim();
@@ -3091,35 +3176,94 @@ public final class PowerManagerService extends SystemService
         }
     }
 
+    private static int gmsUid = -1;
+    private boolean isGmsUid(int uid) {
+        int appid = UserHandle.getAppId(uid);
+	    if( appid == gmsUid ) return true;
+	    return false;
+    }
+
+    public static int getGmsUid() {
+        if( gmsUid == -1 ) {
+            Slog.i(TAG, "getGmsUid() -> uid not set yet!", new Throwable());
+        }
+        return gmsUid;
+    }
+
     private boolean setWakeLockDisabledStateLocked(WakeLock wakeLock) {
+
+        boolean disabled = false;
+
         if ((wakeLock.mFlags & PowerManager.WAKE_LOCK_LEVEL_MASK)
                 == PowerManager.PARTIAL_WAKE_LOCK) {
-            boolean disabled = false;
-            final int appid = UserHandle.getAppId(wakeLock.mOwnerUid);
-            if (appid >= Process.FIRST_APPLICATION_UID) {
+            int appid = UserHandle.getAppId(wakeLock.mOwnerUid);
+
+	        String appPackageName = wakeLock.mPackageName;
+	        if (wakeLock.mWorkSource != null && wakeLock.mWorkSource.size() > 0 ) {
+	            appid = UserHandle.getAppId(wakeLock.mWorkSource.get(0));
+	            appPackageName = wakeLock.mWorkSource.getName(0);
+	        }
+
+ 	        if( appPackageName == null ) appPackageName = "android";
+
+	    	    if(wakeLock.mTag.equals("RingtonePlayer") ||
+		            wakeLock.mTag.equals("GOOGLE_C2DM") ||
+		            wakeLock.mTag.equals("GCM_READ") ||
+		            wakeLock.mTag.startsWith("Audio") ||
+		            wakeLock.mTag.contains("GcmIntent") ||
+		            wakeLock.mTag.equals("AlarmAsyncTask") ) {
+		 	        disabled = false;
+	            } else if( wakeLock.mTag.startsWith("*sync*") ||
+		            wakeLock.mTag.startsWith("*job*") ||
+		            wakeLock.mTag.startsWith("GCoreFlp") ||
+		            wakeLock.mTag.startsWith("NetworkStats") ||
+		            wakeLock.mTag.startsWith("*net_scheduler*") ||
+		            wakeLock.mTag.startsWith("Gnss") ||
+		            wakeLock.mTag.startsWith("Nlp") ||
+		            //wakeLock.mTag.startsWith("RILJ") ||
+		            wakeLock.mTag.startsWith("SyncLoop") ||
+		            wakeLock.mTag.startsWith("SyncMgr") ||
+		            wakeLock.mTag.startsWith("LocWeather") ||
+		            wakeLock.mTag.startsWith("AlarmService#updateNtp") ||
+		            wakeLock.mTag.startsWith("bugle_") ) {
+		            disabled = true;
+		        } else if (appPackageName.startsWith("com.google.android.gms")) {
+			        if( gmsUid == -1 ) {	
+			            if( appPackageName.equals("com.google.android.gms") ) {
+				            if( DEBUG ) Slog.i(TAG, "WL: found GMS appid=" + appid);
+				            gmsUid = appid;
+			            }   
+			        }
+			        disabled = true;
+		        } else if (appPackageName.startsWith("org.omnirom.deskclock")) {
+			        disabled = false;
+	    	    } else if (appPackageName.startsWith("com.google.android.deskclock")) {
+			        disabled = false;
+                } else if (appid >= Process.FIRST_APPLICATION_UID) {
                 // Cached inactive processes are never allowed to hold wake locks.
-                if (mConstants.NO_CACHED_WAKE_LOCKS) {
-                    disabled = !wakeLock.mUidState.mActive &&
-                            wakeLock.mUidState.mProcState
-                                    != ActivityManager.PROCESS_STATE_NONEXISTENT &&
-                            wakeLock.mUidState.mProcState > ActivityManager.PROCESS_STATE_RECEIVER;
-                }
-                if (mDeviceIdleMode) {
-                    // If we are in idle mode, we will also ignore all partial wake locks that are
-                    // for application uids that are not whitelisted.
-                    final UidState state = wakeLock.mUidState;
-                    if (Arrays.binarySearch(mDeviceIdleWhitelist, appid) < 0 &&
-                            Arrays.binarySearch(mDeviceIdleTempWhitelist, appid) < 0 &&
-                            state.mProcState != ActivityManager.PROCESS_STATE_NONEXISTENT &&
-                            state.mProcState > ActivityManager.PROCESS_STATE_FOREGROUND_SERVICE) {
-                        disabled = true;
+                    if (mConstants.NO_CACHED_WAKE_LOCKS) {
+                        disabled = !wakeLock.mUidState.mActive &&
+                                wakeLock.mUidState.mProcState
+                                        != ActivityManager.PROCESS_STATE_NONEXISTENT &&
+                                wakeLock.mUidState.mProcState > ActivityManager.PROCESS_STATE_RECEIVER;
+                    }
+
+                    if  (!disabled && mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF) {
+                        //  if  (mDeviceIdleMode) {
+                        // If we are in idle mode, we will also ignore all partial wake locks that are
+                        // for application uids that are not whitelisted.
+                        final UidState state = wakeLock.mUidState;
+                        if(     (Arrays.binarySearch(mDeviceIdleWhitelist, appid) < 0) &&
+                                (Arrays.binarySearch(mDeviceIdleTempWhitelist, appid) < 0) ) {
+                            disabled = true;
+                        }
                     }
                 }
-            }
-            if (wakeLock.mDisabled != disabled) {
-                wakeLock.mDisabled = disabled;
-                return true;
-            }
+
+        }
+        if (wakeLock.mDisabled != disabled) {
+            wakeLock.mDisabled = disabled;
+            return true;
         }
         return false;
     }
@@ -4539,6 +4683,27 @@ public final class PowerManagerService extends SystemService
 
         @Override // Binder call
         public boolean isDeviceIdleMode() {
+
+	        final int callingUid = Binder.getCallingUid();
+
+            if( DEBUG ) Slog.d(TAG, "isDeviceIdle: uid=" + callingUid);
+
+            if( isGmsUid(callingUid) ) {
+
+                //if( DEBUG ) Slog.d(TAG,"GMS isDeviceIdleMode here:", new Throwable());
+
+	            if( !mHideGMS  ) {
+	                if( DEBUG ) Slog.d(TAG, "isDeviceIdle: GMS hide uid=" + callingUid);
+		            return false;
+	            }
+
+	            if( mForceGMS  ) {
+	                if( DEBUG ) Slog.d(TAG, "isDeviceIdle: GMS force uid=" + callingUid);
+		            return true;
+	            }
+
+            }
+
             final long ident = Binder.clearCallingIdentity();
             try {
                 return isDeviceIdleModeInternal();
@@ -4874,6 +5039,9 @@ public final class PowerManagerService extends SystemService
 
         @Override
         public void setDozeOverrideFromDreamManager(int screenState, int screenBrightness) {
+
+            
+            Slog.e(TAG, "setDozeOverrideFromDreamManager: state=" + screenState, new Throwable());
             switch (screenState) {
                 case Display.STATE_UNKNOWN:
                 case Display.STATE_OFF:
