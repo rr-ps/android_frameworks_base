@@ -1166,6 +1166,60 @@ class AlarmManagerService extends SystemService {
             maxElapsed = triggerElapsed + windowLength;
         }
 
+        boolean blockAlarm = false;
+	    String blockTag = callingPackage + ":" + listenerTag;
+	
+        if(operation != null) {
+            blockTag = callingPackage + ":" + operation.getTag("");
+	    }   
+
+        if (localLOGV) Slog.v(TAG, "Alarm: type=" + type + ", pkg=" + callingPackage + ", uid=" + callingUid + ", tag=" + blockTag + ", " + flags + ", alarmClock=" + alarmClock + ", ws=" + workSource );
+
+        if (operation != mTimeTickSender && alarmClock == null && ( type == AlarmManager.RTC_WAKEUP || type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) ) {
+
+            if (localLOGV)  Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag);
+
+ 	        int appid = 0;
+
+	        if( callingPackage != null && callingPackage.equals("com.google.android.deskclock") ) {
+		        blockAlarm = false;
+	        } else if( blockTag.contains("com.android.internal.telephony.data") ||
+		        blockTag.contains("*sync") ||
+		        blockTag.contains("*job") || 
+		        blockTag.contains("APPWIDGET_UPDATE")) {
+		            blockAlarm = true;
+	        //} else if( blockTag.equals("android:WifiConnectivityManager Restart Scan") ) {
+	   	    //    blockAlarm = true;
+	        } else if( callingPackage != null && callingPackage.startsWith("com.google.android.gms") ) {
+		        blockAlarm = true;
+	        } else {
+
+		        if (workSource != null && workSource.size() > 0 ) {
+                    
+		            if( UserHandle.getAppId(workSource.get(0)) >= Process.FIRST_APPLICATION_UID  &&
+			            Arrays.binarySearch(mDeviceIdleUserWhitelist, workSource.get(0)) < 0 ) {
+			                blockAlarm = true;
+		            }
+		        } else {
+		            if( UserHandle.getAppId(callingUid) >= Process.FIRST_APPLICATION_UID  &&
+			            Arrays.binarySearch(mDeviceIdleUserWhitelist, callingUid) < 0 ) {
+			            blockAlarm = true;
+		            }
+		        }
+	        }
+
+	        if( blockAlarm ) {
+                if (localLOGV) Slog.v(TAG, "RTC Alarm: (blocked) " + type + " " + blockTag);
+
+                if (type == AlarmManager.RTC_WAKEUP) {
+                    type = AlarmManager.RTC;
+                } else {
+                    type = AlarmManager.ELAPSED_REALTIME;
+                }
+	        }
+
+        }
+
         synchronized (mLock) {
             if (DEBUG_BATCH) {
                 Slog.v(TAG, "set(" + operation + ") : type=" + type
@@ -1205,7 +1259,7 @@ class AlarmManagerService extends SystemService {
             // to pull that earlier if there are existing alarms that have requested to
             // bring us out of idle at an earlier time.
             if (mNextWakeFromIdle != null && a.whenElapsed > mNextWakeFromIdle.whenElapsed) {
-                a.when = a.whenElapsed = a.maxWhenElapsed = mNextWakeFromIdle.whenElapsed;
+                //a.when = a.whenElapsed = a.maxWhenElapsed = mNextWakeFromIdle.whenElapsed;
             }
             // Add fuzz to make the alarm go off some time before the actual desired time.
             final long nowElapsed = SystemClock.elapsedRealtime();
@@ -3030,7 +3084,7 @@ class AlarmManagerService extends SystemService {
             qcNsrmExt.removeTriggeredUid(inflight.mUid);
 
             if (mBroadcastRefCount == 0) {
-                mHandler.obtainMessage(AlarmHandler.REPORT_ALARMS_ACTIVE, 0).sendToTarget();
+                mHandler.obtainMessage(AlarmHandler.REPORT_ALARMS_ACTIVE, 0, 0).sendToTarget();
                 if (mWakeLock.isHeld()) {
                     mWakeLock.release();
                 }
@@ -3189,7 +3243,7 @@ class AlarmManagerService extends SystemService {
                 if (!mWakeLock.isHeld()) {
                 mWakeLock.acquire();
                 }
-                mHandler.obtainMessage(AlarmHandler.REPORT_ALARMS_ACTIVE, 1).sendToTarget();
+                mHandler.obtainMessage(AlarmHandler.REPORT_ALARMS_ACTIVE, 1, 0).sendToTarget();
             }
             final InFlight inflight = new InFlight(AlarmManagerService.this,
                     alarm.operation, alarm.listener, alarm.workSource, alarm.uid,
