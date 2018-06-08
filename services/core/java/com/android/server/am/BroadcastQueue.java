@@ -1255,27 +1255,30 @@ public final class BroadcastQueue {
                         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
                         info.activityInfo.applicationInfo.targetSdkVersion, -1, true, false);
                 if (allowed != ActivityManager.APP_START_MODE_NORMAL) {
-                    // We won't allow this receiver to be launched if the app has been
-                    // completely disabled from launches, or it was not explicitly sent
-                    // to it and the app is in a state that should not receive it
-                    // (depending on how getAppStartModeLocked has determined that).
-                    if (allowed == ActivityManager.APP_START_MODE_DISABLED) {
-                        Slog.w(TAG, "Background execution disabled: receiving "
+
+                    if( !(allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) ) ) {
+                        // We won't allow this receiver to be launched if the app has been
+                        // completely disabled from launches, or it was not explicitly sent
+                        // to it and the app is in a state that should not receive it
+                        // (depending on how getAppStartModeLocked has determined that).
+                        if (allowed == ActivityManager.APP_START_MODE_DISABLED) {
+                            Slog.w(TAG, "Background execution disabled: receiving "
                                 + r.intent + " to "
                                 + component.flattenToShortString());
-                        skip = true;
-                    } else if (((r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0)
+                            skip = true;
+                        } else if (((r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0)
                             || (r.intent.getComponent() == null
                                 && r.intent.getPackage() == null
                                 && ((r.intent.getFlags()
                                         & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0)
                                 && !isSignaturePerm(r.requiredPermissions))) {
-                        mService.addBackgroundCheckViolationLocked(r.intent.getAction(),
+                            mService.addBackgroundCheckViolationLocked(r.intent.getAction(),
                                 component.getPackageName());
-                        Slog.w(TAG, "Background execution not allowed: receiving "
+                            Slog.w(TAG, "Background execution not allowed: receiving "
                                 + r.intent + " to "
                                 + component.flattenToShortString());
-                        skip = true;
+                            skip = true;
+                        }
                     }
                 }
             }

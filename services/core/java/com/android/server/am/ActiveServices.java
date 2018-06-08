@@ -367,8 +367,15 @@ public final class ActiveServices {
         if (!r.startRequested && !fgRequired) {
             // Before going further -- if this app is not allowed to start services in the
             // background, then at this point we aren't going to let it period.
-            final int allowed = mAm.getAppStartModeLocked(r.appInfo.uid, r.packageName,
+            int allowed = mAm.getAppStartModeLocked(r.appInfo.uid, r.packageName,
                     r.appInfo.targetSdkVersion, callingPid, false, false);
+
+            if (allowed == ActivityManager.APP_START_MODE_DELAYED) {
+                if( mAm.isWhiteListedService(r.name.getPackageName(),r.name.getClassName()) ) {
+                    allowed = ActivityManager.APP_START_MODE_NORMAL;
+                }
+            }
+
             if (allowed != ActivityManager.APP_START_MODE_NORMAL) {
                 Slog.w(TAG, "Background start not allowed: service "
                         + service + " to " + r.name.flattenToShortString()
@@ -621,9 +628,14 @@ public final class ActiveServices {
             for (int i=services.mServicesByName.size()-1; i>=0; i--) {
                 ServiceRecord service = services.mServicesByName.valueAt(i);
                 if (service.appInfo.uid == uid && service.startRequested) {
-                    if (mAm.getAppStartModeLocked(service.appInfo.uid, service.packageName,
-                            service.appInfo.targetSdkVersion, -1, false, false)
-                            != ActivityManager.APP_START_MODE_NORMAL) {
+                        int allowed = mAm.getAppStartModeLocked(service.appInfo.uid, service.packageName,
+                            service.appInfo.targetSdkVersion, -1, false, false);
+                        if ( allowed  != ActivityManager.APP_START_MODE_NORMAL) {
+
+                        if( allowed == ActivityManager.APP_START_MODE_DELAYED && mAm.isWhiteListedService(service.packageName,service.name.getClassName()) ) {
+                            continue;
+                        }
+
                         if (stopping == null) {
                             stopping = new ArrayList<>();
                         }

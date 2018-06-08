@@ -3341,7 +3341,7 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
     }
 
     void checkReadyForSleepLocked(boolean allowDelay) {
-        if (!mService.isSleepingOrShuttingDownLocked()) {
+        if (!mService.isSleepingOrShuttingDownLocked() && !mGoingToSleep.isHeld()) {
             // Do not care.
             return;
         }
