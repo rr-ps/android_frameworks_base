@@ -374,7 +374,7 @@ public final class BatteryService extends SystemService {
             mPlugType = BATTERY_PLUGGED_NONE;
         }
 
-        if (DEBUG) {
+        /*if (DEBUG) */{
             Slog.d(TAG, "Processing new values: "
                     + "chargerAcOnline=" + mBatteryProps.chargerAcOnline
                     + ", chargerUsbOnline=" + mBatteryProps.chargerUsbOnline
@@ -417,13 +417,19 @@ public final class BatteryService extends SystemService {
                 mBatteryProps.batteryLevel != mLastBatteryLevel ||
                 mPlugType != mLastPlugType ||
                 mBatteryProps.batteryVoltage != mLastBatteryVoltage ||
-                mBatteryProps.batteryTemperature != mLastBatteryTemperature ||
-                mBatteryProps.maxChargingCurrent != mLastMaxChargingCurrent ||
-                mBatteryProps.maxChargingVoltage != mLastMaxChargingVoltage ||
-                mBatteryProps.batteryChargeCounter != mLastChargeCounter ||
+                mBatteryProps.maxChargingCurrent/100000 != mLastMaxChargingCurrent/100000 ||
+                mBatteryProps.maxChargingVoltage/100000 != mLastMaxChargingVoltage/100000 ||
+                mBatteryProps.batteryTemperature/10 != mLastBatteryTemperature/10 ||
+                //mBatteryProps.batteryChargeCounter != mLastChargeCounter ||
                 mInvalidCharger != mLastInvalidCharger ||
                 mDashCharger != mLastDashCharger ||
-                mTurboPower != mLastTurboPower)) {
+                mTurboPower != mLastTurboPower || 
+                ( mPlugType != BATTERY_PLUGGED_NONE && (
+                    mBatteryProps.maxChargingCurrent != mLastMaxChargingCurrent ||
+                    mBatteryProps.maxChargingVoltage != mLastMaxChargingVoltage ||
+                    mBatteryProps.batteryTemperature != mLastBatteryTemperature
+                ))
+                )) {
 
             if (mPlugType != mLastPlugType) {
                 if (mLastPlugType == BATTERY_PLUGGED_NONE) {
