@@ -92,6 +92,9 @@ public class DozeParameters {
     }
 
     public int getPulseVisibleDuration() {
+        if( SystemProperties.getBoolean("persist.doze.keep_notif", false) ) {
+            return 12 * 60 * 1000 * 1000;
+        }
         return getInt("doze.pulse.duration.visible", R.integer.doze_pulse_duration_visible);
     }
 

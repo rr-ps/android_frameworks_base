@@ -8704,35 +8704,56 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
     }
 
-    // Unified app-op and target sdk check
-    int appRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk) {
-        // Apps that target O+ are always subject to background check
+    void logGetAppStartModeLocked(int uid, String packageName, int packageTargetSdk, int allowed, String message) {
+
+        //if (!DEBUG_BACKGROUND_CHECK_) {
+
+        String allowedStr = "MODE_NORMAL";
+
+        if( allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) allowedStr = "MODE_DELAYED_RIGID";
+        else if( allowed == ActivityManager.APP_START_MODE_DELAYED ) allowedStr = "MODE_DELAYED";
+        else if( allowed == ActivityManager.APP_START_MODE_DISABLED ) allowedStr = "DISABLED";
+
         if (packageTargetSdk >= Build.VERSION_CODES.O) {
-            if (DEBUG_BACKGROUND_CHECK) {
-                Slog.i(TAG, "App " + uid + "/" + packageName + " targets O+, restricted");
-            }
-            return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+            Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + message);
+        } else  {
+            Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + message);
         }
+
+    }
+
+    // Unified app-op and target sdk check
+    int appRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk, boolean idle) {
 
 
         // Non-persistent but background whitelisted?
         if (uidOnBackgroundWhitelist(uid)) {
-            if (DEBUG_BACKGROUND_CHECK) {
-                Slog.i(TAG, "App " + uid + "/" + packageName
-                        + " on background whitelist; not restricted in background");
-            }
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on background whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
         // Is this app on the battery whitelist?
         if (isOnDeviceIdleWhitelistLocked(uid)) {
-            //if (DEBUG_BACKGROUND_CHECK) {
-                Slog.i(TAG, "getAppStartModeLocked: " + uid + "/" + packageName
-                        + " on idle whitelist; not restricted in background");
-            //}
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on idle whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
+
+        int appop = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                uid, packageName);
+        if (DEBUG_BACKGROUND_CHECK) {
+            Slog.i(TAG, "Legacy app " + uid + "/" + packageName + " bg appop " + appop);
+        }
+
+        // Apps that target O+ are always subject to background check
+        if (packageTargetSdk >= Build.VERSION_CODES.O) {
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID," targets O+, restricted");
+            if( appop == AppOpsManager.MODE_IGNORED || idle ) {
+                return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+            } else {
+                return ActivityManager.APP_START_MODE_NORMAL;
+            }
+        }
 
         boolean disabledByDefault = SystemProperties.get("persist.pm.bg_disable", "0").equals("1");
         boolean disabledWhileScreenOff = SystemProperties.get("persist.pm.bg_so_disable", "0").equals("1");
@@ -8741,89 +8762,62 @@ public class ActivityManagerService extends IActivityManager.Stub
         if (mPackageManagerInt.isPackagePersistent(packageName)) {
             disabledByDefault = false;
             disabledWhileScreenOff = false;
+            persistent = true;
         }
 
         if( uid >= Process.FIRST_APPLICATION_UID && ( disabledByDefault || (disabledWhileScreenOff&&!mScreenOn) ) ) {
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED,"disabled by global preference");
             return ActivityManager.APP_START_MODE_DELAYED;
-        }
-
-        // ...and legacy apps get an AppOp check
-        int appop = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
-                uid, packageName);
-        if (DEBUG_BACKGROUND_CHECK) {
-            Slog.i(TAG, "Legacy app " + uid + "/" + packageName + " bg appop " + appop);
         }
 
         switch (appop) {
             case AppOpsManager.MODE_ALLOWED:
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"enabled by appops");
                 return ActivityManager.APP_START_MODE_NORMAL;
             case AppOpsManager.MODE_IGNORED:
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED,"disabled by appops");
                 return ActivityManager.APP_START_MODE_DELAYED;
             default:
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,"unspecified by appops");
                 return ActivityManager.APP_START_MODE_DELAYED_RIGID;
         }
     }
 
+
     // Service launch is available to apps with run-in-background exemptions but
     // some other background operations are not.  If we're doing a check
     // of service-launch policy, allow those callers to proceed unrestricted.
-    int appServicesRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk) {
+    int appServicesRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk, boolean idle) {
         // Persistent app?
         if (mPackageManagerInt.isPackagePersistent(packageName)) {
-            if (DEBUG_BACKGROUND_CHECK) {
-                Slog.i(TAG, "App " + uid + "/" + packageName
-                        + " is persistent; not restricted in background");
-            }
-
-            // ...and legacy apps get an AppOp check
             int appop = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
                     uid, packageName);
-            if (DEBUG_BACKGROUND_CHECK) {
-                Slog.i(TAG, "Legacy app " + uid + "/" + packageName + " bg appop " + appop);
-            }
             if( appop != AppOpsManager.MODE_IGNORED ) {
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"persistend app enabled by appops");
                 return ActivityManager.APP_START_MODE_NORMAL;
             }
         }
 
         // Non-persistent but background whitelisted?
         if (uidOnBackgroundWhitelist(uid)) {
-            if (DEBUG_BACKGROUND_CHECK) {
-                Slog.i(TAG, "App " + uid + "/" + packageName
-                        + " on background whitelist; not restricted in background");
-            }
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on background whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
         // Is this app on the battery whitelist?
         if (isOnDeviceIdleWhitelistLocked(uid)) {
-            if (DEBUG_BACKGROUND_CHECK) {
-                Slog.i(TAG, "App " + uid + "/" + packageName
-                        + " on idle whitelist; not restricted in background");
-            }
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on idle whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
         // None of the service-policy criteria apply, so we apply the common criteria
-        return appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk);
+        return appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, idle);
     }
 
     int getAppStartModeLocked(int uid, String packageName, int packageTargetSdk,
             int callingPid, boolean alwaysRestrict, boolean disabledOnly) {
+
         int allowed = getAppStartModeLockedInternal(uid, packageName, packageTargetSdk, callingPid, alwaysRestrict, disabledOnly);
-        if( allowed != ActivityManager.APP_START_MODE_NORMAL ) {
-            if (packageTargetSdk >= Build.VERSION_CODES.O) {
-                Slog.i(TAG, "getAppStartModeLocked: blocked, O+ " + uid + "/" + packageName + ", allowed=" + allowed);
-            } else  {
-                Slog.i(TAG, "getAppStartModeLocked: blocked, N- " + uid + "/" + packageName + ", allowed=" + allowed);
-            }
-        } else {
-            if (packageTargetSdk >= Build.VERSION_CODES.O) {
-                Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowed);
-            } else  {
-                Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowed);
-            }
-        }
         return allowed;
     }
 
@@ -8833,7 +8827,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG, "checkAllowBackground: uid=" + uid + " pkg="
                 + packageName + " rec=" + uidRec + " always=" + alwaysRestrict + " idle="
                 + (uidRec != null ? uidRec.idle : false));
-        if (uidRec == null || alwaysRestrict || uidRec.idle) {
+
+        if(mOnBattery) {
+        //if (uidRec == null || alwaysRestrict || uidRec.idle || mOnBattery) {
             boolean ephemeral;
             if (uidRec == null) {
                 ephemeral = getPackageManagerInternalLocked().isPackageEphemeral(
@@ -8844,6 +8840,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
             if (ephemeral) {
                 // We are hard-core about ephemeral apps not running in the background.
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DISABLED,"ephemeral; disabled");
                 return ActivityManager.APP_START_MODE_DISABLED;
             } else {
                 if (disabledOnly) {
@@ -8851,20 +8848,20 @@ public class ActivityManagerService extends IActivityManager.Stub
                     // disabled for the given package (that is, it is an instant app).  So
                     // we don't need to go further, which is all just seeing if we should
                     // apply a "delayed" mode for a regular app.
+                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"disabled only check");
                     return ActivityManager.APP_START_MODE_NORMAL;
                 }
                 final int startMode = (alwaysRestrict)
-                        ? appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk)
-                        : appServicesRestrictedInBackgroundLocked(uid, packageName,
-                                packageTargetSdk);
+                        ? appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, uidRec != null ? uidRec.idle : true)
+                        : appServicesRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, uidRec != null ? uidRec.idle : true);
                 if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG, "checkAllowBackground: uid=" + uid
                         + " pkg=" + packageName + " startMode=" + startMode
                         + " onwhitelist=" + isOnDeviceIdleWhitelistLocked(uid));
-                if (startMode == ActivityManager.APP_START_MODE_DELAYED) {
+                if (startMode != ActivityManager.APP_START_MODE_NORMAL) {
                     // This is an old app that has been forced into a "compatible as possible"
                     // mode of background check.  To increase compatibility, we will allow other
                     // foreground apps to cause its services to start.
-                    if (callingPid >= 0) {
+                    if (callingPid >= 0 && ( PowerManagerService.getGmsUid() != uid  || mScreenOn )) {
                         ProcessRecord proc;
                         synchronized (mPidsSelfLocked) {
                             proc = mPidsSelfLocked.get(callingPid);
@@ -8873,6 +8870,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                                 !ActivityManager.isProcStateBackground(proc.curProcState)) {
                             // Whoever is instigating this is in the foreground, so we will allow it
                             // to go through.
+                            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"foreground app; not restricted");
                             return ActivityManager.APP_START_MODE_NORMAL;
                         }
                     }
@@ -8880,6 +8878,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                 return startMode;
             }
         }
+        logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on charger; not restricted");
         return ActivityManager.APP_START_MODE_NORMAL;
     }
 

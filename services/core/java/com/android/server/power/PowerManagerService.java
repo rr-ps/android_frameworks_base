@@ -130,6 +130,7 @@ public final class PowerManagerService extends SystemService
 
     private static final boolean DEBUG = false;
     private static final boolean DEBUG_SPEW = DEBUG && false;
+    private static final boolean DEBUG_SPEW_DOZE = DEBUG && true;
 
     // Message: Sent when a user activity timeout occurs to update the power state.
     private static final int MSG_USER_ACTIVITY_TIMEOUT = 1;
@@ -873,9 +874,9 @@ public final class PowerManagerService extends SystemService
         resolver.registerContentObserver(Settings.Secure.getUriFor(
                 Settings.Secure.DOZE_ALWAYS_ON),
                 false, mSettingsObserver, UserHandle.USER_ALL);
-        //resolver.registerContentObserver(Settings.Secure.getUriFor(
-        //        Settings.Secure.DOZE_ALWAYS_ON_CHARGER),
-        //        false, mSettingsObserver, UserHandle.USER_ALL);
+        resolver.registerContentObserver(Settings.Secure.getUriFor(
+                Settings.Secure.DOZE_ALWAYS_ON_CHARGER),
+                false, mSettingsObserver, UserHandle.USER_ALL);
         resolver.registerContentObserver(Settings.Secure.getUriFor(
                 Settings.Secure.DOUBLE_TAP_TO_WAKE),
                 false, mSettingsObserver, UserHandle.USER_ALL);
@@ -1568,7 +1569,7 @@ public final class PowerManagerService extends SystemService
     // dozing before really going to sleep.
     @SuppressWarnings("deprecation")
     private boolean goToSleepNoUpdateLocked(long eventTime, int reason, int flags, int uid) {
-        if (DEBUG_SPEW) {
+        if (DEBUG_SPEW_DOZE) {
             Slog.d(TAG, "goToSleepNoUpdateLocked: eventTime=" + eventTime
                     + ", reason=" + reason + ", flags=" + flags + ", uid=" + uid);
         }
@@ -1647,7 +1648,7 @@ public final class PowerManagerService extends SystemService
     }
 
     private boolean napNoUpdateLocked(long eventTime, int uid) {
-        if (DEBUG_SPEW) {
+        if (DEBUG_SPEW_DOZE) {
             Slog.d(TAG, "napNoUpdateLocked: eventTime=" + eventTime + ", uid=" + uid);
         }
 
@@ -1670,7 +1671,7 @@ public final class PowerManagerService extends SystemService
 
     // Done dozing, drop everything and go to sleep.
     private boolean reallyGoToSleepNoUpdateLocked(long eventTime, int uid) {
-        if (DEBUG_SPEW) {
+        if (DEBUG_SPEW_DOZE) {
             Slog.d(TAG, "reallyGoToSleepNoUpdateLocked: eventTime=" + eventTime
                     + ", uid=" + uid);
         }
@@ -1828,7 +1829,7 @@ public final class PowerManagerService extends SystemService
     		    SystemProperties.set("power.is_powered", "0");
     	    }
 
-            if (DEBUG_SPEW) {
+            if (DEBUG_SPEW_DOZE) {
                 Slog.d(TAG, "updateIsPoweredLocked: wasPowered=" + wasPowered
                         + ", mIsPowered=" + mIsPowered
                         + ", oldPlugType=" + oldPlugType
@@ -1842,7 +1843,7 @@ public final class PowerManagerService extends SystemService
 
                 mSandmanSummoned = true;
 
-                if( mWakefulness == WAKEFULNESS_ASLEEP ) {
+                if( wasPowered != mIsPowered && mWakefulness == WAKEFULNESS_ASLEEP ) {
                     setWakefulnessLocked(WAKEFULNESS_DOZING, 0);
                 }
 
@@ -2287,7 +2288,7 @@ public final class PowerManagerService extends SystemService
      * Determines whether to post a message to the sandman to update the dream state.
      */
     private void updateDreamLocked(int dirty, boolean displayBecameReady) {
-        Slog.i(TAG, "updateDreamLocked : dirty=" + dirty + ", displayBecameReady=" + displayBecameReady + ", mDisplayReady=" + mDisplayReady);
+        //Slog.i(TAG, "updateDreamLocked : dirty=" + dirty + ", displayBecameReady=" + displayBecameReady + ", mDisplayReady=" + mDisplayReady);
         if ((dirty & (DIRTY_WAKEFULNESS
                 | DIRTY_USER_ACTIVITY
                 | DIRTY_WAKE_LOCKS
@@ -2304,7 +2305,7 @@ public final class PowerManagerService extends SystemService
     }
 
     private void scheduleSandmanLocked() {
-        Slog.i(TAG, "Schedule sandman : mSandmanScheduled=" + mSandmanScheduled);
+        //Slog.i(TAG, "Schedule sandman : mSandmanScheduled=" + mSandmanScheduled);
         if (!mSandmanScheduled) {
             mSandmanScheduled = true;
             Message msg = mHandler.obtainMessage(MSG_SANDMAN);
@@ -2590,10 +2591,16 @@ public final class PowerManagerService extends SystemService
     private void onDisplayPowerPolicyChanging() {
         mHideGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_HIDE_GMS, "0").equals("1");
         mForceGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_FORCE_GMS, "0").equals("1");
+        if (DEBUG_SPEW_DOZE) {
+              //Slog.d(TAG, "onDisplayPowerPolicyChanging: policy=" + mDisplayPowerRequest.policy);
+        }
     }
 
     boolean suspended = false;
     private void onDisplayPowerPolicyChanged() {
+        if (DEBUG_SPEW_DOZE) {
+              Slog.d(TAG, "onDisplayPowerPolicyChanged: policy=" + mDisplayPowerRequest.policy);
+        }
         if( mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF ) {
             if( !suspended ) {
                 //Slog.d(TAG, "onDisplayPowerPolicyChanged: suspend");
@@ -3248,7 +3255,7 @@ public final class PowerManagerService extends SystemService
                                 wakeLock.mUidState.mProcState > ActivityManager.PROCESS_STATE_RECEIVER;
                     }
 
-                    if  (!disabled && mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF) {
+                    if  (!disabled && !mDisplayPowerRequest.isBrightOrDim()) {
                         //  if  (mDeviceIdleMode) {
                         // If we are in idle mode, we will also ignore all partial wake locks that are
                         // for application uids that are not whitelisted.

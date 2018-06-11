@@ -39,6 +39,8 @@ import android.content.IntentSender;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.pm.ApplicationInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -52,6 +54,7 @@ import android.util.EventLog;
 import android.util.Slog;
 import android.util.TimeUtils;
 
+import com.android.server.power.PowerManagerService;
 import static com.android.server.am.ActivityManagerDebugConfig.*;
 
 /**
@@ -609,6 +612,58 @@ public final class BroadcastQueue {
             skip = true;
         }
 
+        if( r!=null && r.intent!=null ) {
+            mService.updateScreenState(r.intent);
+        }
+
+/*
+            if (!skip && filter.receiverList.uid >= Process.FIRST_APPLICATION_UID) {
+
+                int allowed = ActivityManager.APP_START_MODE_NORMAL;
+
+                mService.updateScreenState(r.intent);
+
+                int targetSdkVersion = Build.VERSION_CODES.N;
+                try {
+                    ApplicationInfo ai = AppGlobals.getPackageManager().getApplicationInfo(filter.packageName, 0, 0);
+                    targetSdkVersion = ai.targetSdkVersion;
+                } catch (Exception e) {
+                    Slog.e(TAG, "getAppStartModeLocked: Can't get appinfo: from=" + r.callerPackage + " receiving intent=" + r.intent);
+                }    
+
+                allowed = mService.getAppStartModeLocked(
+                        filter.receiverList.uid, filter.packageName,
+                        targetSdkVersion, r.callingPid, true, false);
+
+                if( allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(filter.packageName,r.intent) ) {
+                    allowed = ActivityManager.APP_START_MODE_NORMAL;
+                } 
+
+                //final int allowed = mService.getAppStartModeLocked(
+                //         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
+                //         info.activityInfo.applicationInfo.targetSdkVersion, -1, true, false);
+                if (allowed != ActivityManager.APP_START_MODE_NORMAL) {
+                    // We won't allow this receiver to be launched if the app has been
+                    // completely disabled from launches, or it was not explicitly sent
+                    // to it and the app is in a state that should not receive it
+                    // (depending on how getAppStartModeLocked has determined that).
+                    if (allowed == ActivityManager.APP_START_MODE_DISABLED  || allowed == ActivityManager.APP_START_MODE_DELAYED ) {
+                        Slog.w(TAG, "Background execution disabled: receiving " + r.intent);
+                        skip = true;
+                    } else if ( (r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0
+                            || (r.intent.getComponent() == null
+                                && r.intent.getPackage() == null
+                                && ((r.intent.getFlags()
+                                        & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0)
+                                && !isSignaturePerm(r.requiredPermissions))) {
+                        //mService.addBackgroundCheckViolationLocked(r.intent.getAction(),filter.packageName);
+                        Slog.w(TAG, "Background execution not allowed: receiving " + r.intent);
+                        skip = true;
+                    }
+                }
+            }
+*/
+
         if (!mService.mIntentFirewall.checkBroadcast(r.intent, r.callingUid,
                 r.callingPid, r.resolvedType, filter.receiverList.uid)) {
             skip = true;
@@ -769,6 +824,9 @@ public final class BroadcastQueue {
     }
 
     final void scheduleTempWhitelistLocked(int uid, long duration, BroadcastRecord r) {
+        
+        //if( PowerManagerService.getGmsUid() == uid ) return;
+
         if (duration > Integer.MAX_VALUE) {
             duration = Integer.MAX_VALUE;
         }

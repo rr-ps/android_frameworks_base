@@ -51,6 +51,11 @@ public class AmbientDisplayConfiguration {
     }
 
     public boolean pulseOnNotificationEnabled(int user) {
+
+        if( SystemProperties.getBoolean("persist.doze.pulse_on_charger", false) && 
+            SystemProperties.getBoolean("power.is_powered", false) ) {
+            return pulseOnNotificationAvailable();
+        }
         return boolSettingDefaultOn(Settings.Secure.DOZE_ENABLED, user) && pulseOnNotificationAvailable();
     }
 

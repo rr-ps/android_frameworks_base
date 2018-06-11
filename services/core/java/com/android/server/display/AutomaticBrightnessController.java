@@ -235,7 +235,7 @@ class AutomaticBrightnessController {
         // and hold onto the last computed screen auto brightness.  We save the dozing flag for
         // debugging purposes.
         mDozing = dozing;
-        boolean changed = setLightSensorEnabled(enable && !dozing);
+        boolean changed = setLightSensorEnabled(enable /*&& !dozing */);
         if (enable && !dozing && userInitiatedChange) {
             prepareBrightnessAdjustmentSample();
         }

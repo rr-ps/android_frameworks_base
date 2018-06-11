@@ -42,6 +42,7 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.os.UserHandle;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.util.MathUtils;
 import android.util.Slog;
@@ -735,11 +736,12 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             brightness = PowerManager.BRIGHTNESS_OFF;
         }
 
+        final boolean autoBrightnessEnabledInDoze = SystemProperties.getBoolean("persist.doze.use_autobrightness", false) 
+                && (state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND);
+
         // Configure auto-brightness.
         boolean autoBrightnessEnabled = false;
         if (mAutomaticBrightnessController != null) {
-            final boolean autoBrightnessEnabledInDoze = mAllowAutoBrightnessWhileDozingConfig
-                    && (state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND);
             autoBrightnessEnabled = mPowerRequest.useAutoBrightness
                     && (state == Display.STATE_ON || autoBrightnessEnabledInDoze)
                     && brightness < 0;
@@ -781,9 +783,24 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         }
 
         // Use default brightness when dozing unless overridden.
-        if (brightness < 0 && (state == Display.STATE_DOZE
+        if (/*brightness < 0 &&*/ (state == Display.STATE_DOZE
                 || state == Display.STATE_DOZE_SUSPEND)) {
-            brightness = mScreenBrightnessDozeConfig;
+
+            if( brightness > 0 ) {
+                Slog.d(TAG, "mScreenBrightnessDozeConfig (auto): " + brightness);
+            } else {
+                brightness = 50;
+                Slog.d(TAG, "mScreenBrightnessDozeConfig (config): " + brightness);
+            }
+
+            boolean reduceBrightness = SystemProperties.getBoolean("persist.doze.reduce_brightness", false);
+            int divider = reduceBrightness ? 4 : 2;
+            boolean isCharging = SystemProperties.getBoolean("power.is_powered", false);
+            if( !isCharging ) {
+                brightness = brightness/divider;
+                if( brightness < 1 )  brightness = 1;
+                Slog.d(TAG, "mScreenBrightnessDozeConfig (reduced): " + brightness);
+            }
         }
 
         // Apply manual brightness.

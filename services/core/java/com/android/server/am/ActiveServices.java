@@ -632,7 +632,7 @@ public final class ActiveServices {
                             service.appInfo.targetSdkVersion, -1, false, false);
                         if ( allowed  != ActivityManager.APP_START_MODE_NORMAL) {
 
-                        if( allowed == ActivityManager.APP_START_MODE_DELAYED && mAm.isWhiteListedService(service.packageName,service.name.getClassName()) ) {
+                        if( mAm.isWhiteListedService(service.packageName,service.name.getClassName()) ) {
                             continue;
                         }
 

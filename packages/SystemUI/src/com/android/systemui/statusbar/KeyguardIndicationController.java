@@ -301,13 +301,23 @@ public class KeyguardIndicationController {
                 } else {
                     // Use the high voltage symbol ⚡ (u26A1 unicode) but prevent the system
                     // to load its emoji colored variant with the uFE0E flag
-                    boolean showAmbientBattery = Settings.System.getIntForUser(mContext.getContentResolver(),
-                        Settings.System.AMBIENT_BATTERY_PERCENT, 0, UserHandle.USER_CURRENT) != 0;
+
+                    mTextView.setTextColor(Color.WHITE);
+
+                    boolean showAmbientBattery = true; //Settings.System.getIntForUser(mContext.getContentResolver(),
+                        //Settings.System.AMBIENT_BATTERY_PERCENT, 0, UserHandle.USER_CURRENT) != 0;
                     if (showAmbientBattery) {
-                        String bolt = "\u26A1\uFE0E";
-                        CharSequence chargeIndicator = (mPowerPluggedIn ? (bolt + " ") : "") +
+                        if( !mPowerPluggedIn ) {
+                            String bolt = "\u26A1\uFE0E";
+                            CharSequence chargeIndicator = (mPowerPluggedIn ? (bolt + " ") : "") +
                                 NumberFormat.getPercentInstance().format(mLevel / 100f);
-                        mTextView.switchIndication(chargeIndicator);
+                            mTextView.switchIndication(chargeIndicator);
+                        } else {
+                            String chargeIndicator = computePowerIndication();
+                            chargeIndicator += ", " + (mChargingWattage / 1000) + " mW";
+                            chargeIndicator = chargeIndicator + "\n" + NumberFormat.getPercentInstance().format(mLevel / 100f);
+                            mTextView.switchIndication(chargeIndicator);
+                        }
                     } else {
                         mTextView.switchIndication(null);
                     }
@@ -331,9 +341,9 @@ public class KeyguardIndicationController {
                 mTextView.setTextColor(mInitialTextColor);
             } else if (mPowerPluggedIn) {
                 String indication = computePowerIndication();
-                if (DEBUG_CHARGING_SPEED) {
+                //if (DEBUG_CHARGING_SPEED) {
                     indication += ",  " + (mChargingWattage / 1000) + " mW";
-                }
+                //}
                 mTextView.switchIndication(indication);
                 mTextView.setTextColor(mInitialTextColor);
             } else if (!TextUtils.isEmpty(trustManagedIndication)
@@ -393,7 +403,7 @@ public class KeyguardIndicationController {
         }
 
         String batteryInfo = "";
-        boolean showbatteryInfo = Settings.System.getIntForUser(mContext.getContentResolver(),
+        boolean showbatteryInfo = mDozing || Settings.System.getIntForUser(mContext.getContentResolver(),
             Settings.System.LOCKSCREEN_BATTERY_INFO, 0, UserHandle.USER_CURRENT) == 1;
 
         if (showbatteryInfo) {

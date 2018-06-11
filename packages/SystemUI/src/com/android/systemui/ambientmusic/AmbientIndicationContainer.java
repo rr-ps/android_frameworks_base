@@ -12,6 +12,7 @@ import android.widget.FrameLayout;
 import android.widget.FrameLayout.LayoutParams;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.graphics.Color;
 
 import com.android.systemui.R;
 import com.android.systemui.ambientmusic.AmbientIndicationInflateListener;
@@ -98,17 +99,27 @@ public class AmbientIndicationContainer extends AutoReinflateContainer implement
     }
 
     public void setIndication(MediaMetadata mediaMetaData) {
-        CharSequence charSequence = null;
+        String charSequence = null;
         CharSequence lengthInfo = null;
         if (mediaMetaData != null) {
             CharSequence artist = mediaMetaData.getText(MediaMetadata.METADATA_KEY_ARTIST);
             CharSequence album = mediaMetaData.getText(MediaMetadata.METADATA_KEY_ALBUM);
             CharSequence title = mediaMetaData.getText(MediaMetadata.METADATA_KEY_TITLE);
             long duration = mediaMetaData.getLong(MediaMetadata.METADATA_KEY_DURATION);
-            if (artist != null && album != null && title != null) {
+            //if (artist != null && album != null && title != null) {
                 /* considering we are in Ambient mode here, it's not worth it to show
                     too many infos, so let's skip album name to keep a smaller text */
-                charSequence = artist.toString() /*+ " - " + album.toString()*/ + " - " + title.toString();
+                charSequence = "";
+                if( artist != null ) charSequence = artist.toString();
+                if( album != null ) { 
+                    if( artist != null )  charSequence += " - ";
+                    charSequence += album.toString();
+                }
+                if( title != null ) { 
+                    if( artist != null || album != null )  charSequence += " - ";
+                    charSequence += title.toString();
+                }
+                if( artist == null && album == null && title == null ) charSequence = "unknown track";
                 if (duration != 0) {
                     lengthInfo = String.format("%02d:%02d",
                             TimeUnit.MILLISECONDS.toMinutes(duration),
@@ -116,15 +127,20 @@ public class AmbientIndicationContainer extends AutoReinflateContainer implement
                             TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(duration))
                     );
                 }
-            }
+            //}
         }
         if (mScrollingInfo) {
             // if we are already showing an Ambient Notification with track info,
             // stop the current scrolling and start it delayed again for the next song
             setTickerMarquee(true);
         }
+
+        mText.setTextColor(Color.WHITE);
         mText.setText(charSequence);
+
+        mTrackLength.setTextColor(Color.WHITE);
         mTrackLength.setText(lengthInfo);
+
         mMediaMetaData = mediaMetaData;
         boolean infoAvaillable = TextUtils.isEmpty(charSequence);
         if (infoAvaillable) {
