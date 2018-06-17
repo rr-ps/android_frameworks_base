@@ -789,7 +789,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             if( brightness > 0 ) {
                 Slog.d(TAG, "mScreenBrightnessDozeConfig (auto): " + brightness);
             } else {
-                brightness = 50;
+                brightness = 30;
                 Slog.d(TAG, "mScreenBrightnessDozeConfig (config): " + brightness);
             }
 
