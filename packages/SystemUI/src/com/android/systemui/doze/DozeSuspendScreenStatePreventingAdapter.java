@@ -16,6 +16,7 @@
 
 package com.android.systemui.doze;
 
+import android.os.SystemProperties;
 import android.support.annotation.VisibleForTesting;
 import android.view.Display;
 
@@ -49,6 +50,9 @@ public class DozeSuspendScreenStatePreventingAdapter extends DozeMachine.Service
     }
 
     private static boolean isNeeded(DozeParameters params) {
+        //boolean override = SystemProperties.getBoolean("persist.doze.ovr_sup_suspend", false);
+        //if( override ) return false;
+        //return true;
         return !params.getDozeSuspendDisplayStateSupported();
     }
 }

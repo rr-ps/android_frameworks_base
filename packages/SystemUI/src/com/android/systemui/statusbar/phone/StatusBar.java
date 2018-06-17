@@ -3242,17 +3242,26 @@ public class StatusBar extends SystemUI implements DemoMode,
 
     @Override
     public void onHeadsUpStateChanged(Entry entry, boolean isHeadsUp) {
+        Log.v(TAG, "doze: onHeadsUpStateChanged isHeadsUp=" + isHeadsUp);
         if (!isHeadsUp && mHeadsUpEntriesToRemoveOnSwitch.contains(entry)) {
+            Log.v(TAG, "doze: onHeadsUpStateChanged isHeadsUp=false, entry=" + entry);
             removeNotification(entry.key, mLatestRankingMap);
             mHeadsUpEntriesToRemoveOnSwitch.remove(entry);
             if (mHeadsUpEntriesToRemoveOnSwitch.isEmpty()) {
                 mLatestRankingMap = null;
             }
         } else {
+            Log.v(TAG, "doze: onHeadsUpStateChanged isHeadsUp=" + isHeadsUp + ", entry=" + entry);
             updateNotificationRanking(null);
             if (isHeadsUp) {
                 mDozeServiceHost.fireNotificationHeadsUp();
             }
+        }
+
+        if (mStackScroller.hasPulsingNotifications() && mHeadsUpManager.getAllEntries().isEmpty()) {
+            // We were showing a pulse for a notification, but no notifications are pulsing anymore.
+            // Finish the pulse.
+            mDozeScrimController.pulseOutNow();
         }
 
     }
@@ -6490,6 +6499,7 @@ public class StatusBar extends SystemUI implements DemoMode,
                 }
 
                 private void setPulsing(Collection<HeadsUpManager.HeadsUpEntry> pulsing) {
+                    Slog.i(TAG, "doze: setPulsing pulsing=" + pulsing);
                     mStackScroller.setPulsing(pulsing);
                     mNotificationPanel.setPulsing(pulsing != null);
                     mVisualStabilityManager.setPulsing(pulsing != null);
@@ -6497,6 +6507,7 @@ public class StatusBar extends SystemUI implements DemoMode,
                 }
 
                 private void setCleanLayout(int reason) {
+                    Slog.i(TAG, "doze: setCleanLayout reason=" + reason);
                     mNotificationPanel.setCleanLayout(reason);
                     mNotificationShelf.setCleanLayout(reason);
                     if (isAmbientContainerAvailable()) {

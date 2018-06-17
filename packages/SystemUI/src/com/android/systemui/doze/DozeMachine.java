@@ -48,7 +48,7 @@ import java.util.ArrayList;
 public class DozeMachine {
 
     static final String TAG = "DozeMachine";
-    static final boolean DEBUG = DozeService.DEBUG;
+    static final boolean DEBUG = true; //DozeService.DEBUG;
 
     public enum State {
         /** Default state. Transition to INITIALIZED to get Doze going. */
@@ -87,7 +87,13 @@ public class DozeMachine {
         boolean staysAwake() {
             switch (this) {
                 case DOZE_REQUEST_PULSE:
+                    Log.i(TAG, "staysAwake(DOZE_REQUEST_PULSE)");
+                    return true;
                 case DOZE_PULSING:
+                    Log.i(TAG, "staysAwake(DOZE_PULSING)");
+                    if( !SystemProperties.getBoolean("persist.doze.pulsing_keep_awake", false) ) {
+                        return false;
+                    }
                     return true;
                 default:
                     return false;
@@ -99,13 +105,21 @@ public class DozeMachine {
                 case UNINITIALIZED:
                 case INITIALIZED:
                 case DOZE:
-                case DOZE_REQUEST_PULSE:
                 case DOZE_AOD_PAUSED:
+                    Log.i(TAG, "screenState - Display.STATE_OFF");
                     return Display.STATE_OFF;
+
+                case DOZE_REQUEST_PULSE:
+                    Log.i(TAG, "screenState - DOZE_REQUEST_PULSE - Display.STATE_OFF");
+                    return Display.STATE_OFF;
+
                 case DOZE_PULSING:
-                    return Display.STATE_ON;
+                    Log.i(TAG, "screenState - DOZE_PULSING - Display.STATE_DOZE_SUSPEND (was Display.STATE_ON)");
+                    return Display.STATE_DOZE_SUSPEND;
+
                 case DOZE_AOD:
                 case DOZE_AOD_PAUSING:
+                    Log.i(TAG, "screenState - Display.STATE_DOZE_SUSPEND");
                     return Display.STATE_DOZE_SUSPEND;
                 default:
                     return Display.STATE_UNKNOWN;
@@ -122,8 +136,6 @@ public class DozeMachine {
     private State mState = State.UNINITIALIZED;
     private int mPulseReason;
     private boolean mWakeLockHeldForCurrentState = false;
-    private boolean mCharging = false;
-    private Object  mLock = new Object();
 
 
     public DozeMachine(Service service, AmbientDisplayConfiguration config,
@@ -166,10 +178,10 @@ public class DozeMachine {
 
     private void requestState(State requestedState, int pulseReason) {
         Assert.isMainThread();
-        if (DEBUG) {
+        //if (DEBUG) {
             Log.i(TAG, "request: current=" + mState + " req=" + requestedState,
                     new Throwable("here"));
-        }
+        //}
 
         boolean runNow = !isExecutingTransition();
         mQueuedRequests.add(requestedState);
@@ -216,15 +228,6 @@ public class DozeMachine {
         mDozeService.requestWakeUp();
     }
 
-
-    private void updateChargingLocked(boolean charging) {
-        if (!charging && mCharging) {
-            mCharging = false;
-        } else if (charging) {
-            mCharging = charging;
-        }
-    }
-
     private boolean isExecutingTransition() {
         return !mQueuedRequests.isEmpty();
     }
@@ -232,9 +235,10 @@ public class DozeMachine {
     private void transitionTo(State requestedState, int pulseReason) {
         State newState = transitionPolicy(requestedState);
 
-        if (DEBUG) {
-            Log.i(TAG, "transition: old=" + mState + " req=" + requestedState + " new=" + newState);
-        }
+        //if (DEBUG) {
+        Log.i(TAG, "transition: old=" + mState + " req=" + requestedState + " new=" + newState);
+        Log.i(TAG, "here", new Throwable());
+        //}
 
         if (newState == mState) {
             return;
@@ -327,9 +331,11 @@ public class DozeMachine {
     private void updateWakeLockState(State newState) {
         boolean staysAwake = newState.staysAwake();
         if (mWakeLockHeldForCurrentState && !staysAwake) {
+            Log.i(TAG, "release wakelock");
             mWakeLock.release();
             mWakeLockHeldForCurrentState = false;
         } else if (!mWakeLockHeldForCurrentState && staysAwake) {
+            Log.i(TAG, "acquire wakelock");
             mWakeLock.acquire();
             mWakeLockHeldForCurrentState = true;
         }
@@ -354,15 +360,14 @@ public class DozeMachine {
             Log.i(TAG, "Always on enabled");
             return true;
         }
-        synchronized (mLock) {
-            mCharging = SystemProperties.getBoolean("power.is_powered", false);
-            Log.i(TAG, "mCharging=" + mCharging);
-            if( mCharging ) {
-                Log.i(TAG, "On charger");
-                if(mConfig.alwaysOnChargerEnabled(UserHandle.USER_CURRENT) ) {
-                    Log.i(TAG, "Always On on charger enabled");
-                    return true;
-                }
+
+        boolean charging = SystemProperties.getBoolean("power.is_powered", false);
+        Log.i(TAG, "charging=" + charging);
+        if( charging ) {
+            Log.i(TAG, "On charger");
+            if(mConfig.alwaysOnChargerEnabled(UserHandle.USER_CURRENT) ) {
+                Log.i(TAG, "Always On on charger enabled");
+                return true;
             }
         }
         return false;

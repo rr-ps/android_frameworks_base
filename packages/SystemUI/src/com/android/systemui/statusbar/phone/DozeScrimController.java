@@ -158,14 +158,16 @@ public class DozeScrimController {
     }
 
     public void onScreenTurnedOn() {
-        if (isPulsing()) {
+        Log.d(TAG, "onScreenTurnedOn");
+/*        if (isPulsing()) {
+            Log.d(TAG, "onScreenTurnedOn - isPulsing");
             final boolean pickupOrDoubleTap = mPulseReason == DozeLog.PULSE_REASON_SENSOR_PICKUP
                     || mPulseReason == DozeLog.PULSE_REASON_SENSOR_DOUBLE_TAP;
-            startScrimAnimation(true /* inFront */, 0f,
+            startScrimAnimation(true , 0f,
                     mDozeParameters.getPulseInDuration(pickupOrDoubleTap),
                     pickupOrDoubleTap ? Interpolators.LINEAR_OUT_SLOW_IN : Interpolators.ALPHA_OUT,
                     mPulseInFinished);
-        }
+        }*/
     }
 
     public boolean isPulsing() {
@@ -196,6 +198,17 @@ public class DozeScrimController {
         if (mPulseCallback != null) {
             mPulseCallback.onPulseStarted();
         }
+
+        if (isPulsing()) {
+            Log.d(TAG, "pulseStarted - isPulsing");
+            final boolean pickupOrDoubleTap = mPulseReason == DozeLog.PULSE_REASON_SENSOR_PICKUP
+                    || mPulseReason == DozeLog.PULSE_REASON_SENSOR_DOUBLE_TAP;
+            startScrimAnimation(true /* inFront */, 0f,
+                    mDozeParameters.getPulseInDuration(pickupOrDoubleTap),
+                    pickupOrDoubleTap ? Interpolators.LINEAR_OUT_SLOW_IN : Interpolators.ALPHA_OUT,
+                    mPulseInFinished);
+        }
+
     }
 
     private void pulseFinished() {

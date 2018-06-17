@@ -49,7 +49,7 @@ import java.util.function.Consumer;
 
 public class DozeSensors {
 
-    private static final boolean DEBUG = DozeService.DEBUG;
+    private static final boolean DEBUG = true; //DozeService.DEBUG;
 
     private static final String TAG = "DozeSensors";
 
