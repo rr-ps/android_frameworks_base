@@ -1314,6 +1314,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     volatile boolean mProcessesReady = false;
     volatile boolean mSystemReady = false;
     volatile boolean mOnBattery = false;
+    volatile boolean mUpAndRunning = false;
     volatile int mFactoryTest;
 
     @GuardedBy("this") boolean mBooting = false;
@@ -8828,6 +8829,10 @@ public class ActivityManagerService extends IActivityManager.Stub
                 + packageName + " rec=" + uidRec + " always=" + alwaysRestrict + " idle="
                 + (uidRec != null ? uidRec.idle : false));
 
+        if(!mUpAndRunning) {
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"booting up; not restricted");
+            return ActivityManager.APP_START_MODE_NORMAL;
+        }
         if(mOnBattery) {
         //if (uidRec == null || alwaysRestrict || uidRec.idle || mOnBattery) {
             boolean ephemeral;
@@ -14727,6 +14732,7 @@ public class ActivityManagerService extends IActivityManager.Stub
             mUserController.sendUserSwitchBroadcastsLocked(-1, currentUserId);
             traceLog.traceEnd(); // ActivityManagerStartApps
             traceLog.traceEnd(); // PhaseActivityManagerReady
+            mUpAndRunning = true;
         }
     }
 
