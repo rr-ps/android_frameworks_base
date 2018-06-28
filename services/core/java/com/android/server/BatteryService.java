@@ -379,8 +379,8 @@ public final class BatteryService extends SystemService {
                     + "chargerAcOnline=" + mBatteryProps.chargerAcOnline
                     + ", chargerUsbOnline=" + mBatteryProps.chargerUsbOnline
                     + ", chargerWirelessOnline=" + mBatteryProps.chargerWirelessOnline
-                    + ", maxChargingCurrent" + mBatteryProps.maxChargingCurrent
-                    + ", maxChargingVoltage" + mBatteryProps.maxChargingVoltage
+                    + ", maxChargingCurrent=" + mBatteryProps.maxChargingCurrent
+                    + ", maxChargingVoltage=" + mBatteryProps.maxChargingVoltage
                     + ", batteryStatus=" + mBatteryProps.batteryStatus
                     + ", batteryHealth=" + mBatteryProps.batteryHealth
                     + ", batteryPresent=" + mBatteryProps.batteryPresent
