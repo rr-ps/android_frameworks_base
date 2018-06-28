@@ -379,7 +379,7 @@ class ContextImpl extends Context {
             final ArrayMap<File, SharedPreferencesImpl> cache = getSharedPreferencesCacheLocked();
             sp = cache.get(file);
             if (sp == null) {
-                checkMode(mode);
+                // checkMode(mode); SDV!!! Bypass for now
                 if (getApplicationInfo().targetSdkVersion >= android.os.Build.VERSION_CODES.O) {
                     if (isCredentialProtectedStorage()
                             && !getSystemService(UserManager.class)
@@ -1518,8 +1518,9 @@ class ContextImpl extends Context {
                             "Unable to start service " + service
                             + ": " + cn.getClassName());
                 } else if (cn.getPackageName().equals("?")) {
-                    throw new IllegalStateException(
-                            "Not allowed to start service " + service + ": " + cn.getClassName());
+                    //throw new IllegalStateException(
+                    //        "Not allowed to start service " + service + ": " + cn.getClassName());
+                    Log.w(TAG,"Not allowed to start service " + service + ": " + cn.getClassName());
                 }
             }
             return cn;
