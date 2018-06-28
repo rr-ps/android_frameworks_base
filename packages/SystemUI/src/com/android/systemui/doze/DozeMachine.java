@@ -178,11 +178,10 @@ public class DozeMachine {
 
     private void requestState(State requestedState, int pulseReason) {
         Assert.isMainThread();
-        //if (DEBUG) {
-            Log.i(TAG, "request: current=" + mState + " req=" + requestedState,
-                    new Throwable("here"));
-        //}
-
+        if (DEBUG) {
+            Log.i(TAG, "request: current=" + mState + " req=" + requestedState);
+        }
+        
         boolean runNow = !isExecutingTransition();
         mQueuedRequests.add(requestedState);
         if (runNow) {
@@ -235,10 +234,9 @@ public class DozeMachine {
     private void transitionTo(State requestedState, int pulseReason) {
         State newState = transitionPolicy(requestedState);
 
-        //if (DEBUG) {
-        Log.i(TAG, "transition: old=" + mState + " req=" + requestedState + " new=" + newState);
-        Log.i(TAG, "here", new Throwable());
-        //}
+        if (DEBUG) {
+            Log.i(TAG, "transition: old=" + mState + " req=" + requestedState + " new=" + newState);
+        }
 
         if (newState == mState) {
             return;

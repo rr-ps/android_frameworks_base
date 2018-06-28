@@ -736,7 +736,9 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             brightness = PowerManager.BRIGHTNESS_OFF;
         }
 
-        final boolean autoBrightnessEnabledInDoze = SystemProperties.getBoolean("persist.doze.use_autobrightness", false) 
+        boolean isCharging = SystemProperties.getBoolean("power.is_powered", false);
+
+        final boolean autoBrightnessEnabledInDoze = ( SystemProperties.getBoolean("persist.doze.use_autobrightness", false) || isCharging )
                 && (state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND);
 
         // Configure auto-brightness.
@@ -795,7 +797,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
 
             boolean reduceBrightness = SystemProperties.getBoolean("persist.doze.reduce_brightness", false);
             int divider = reduceBrightness ? 4 : 2;
-            boolean isCharging = SystemProperties.getBoolean("power.is_powered", false);
+            //boolean isCharging = SystemProperties.getBoolean("power.is_powered", false);
             if( !isCharging ) {
                 brightness = brightness/divider;
                 if( brightness < 1 )  brightness = 1;

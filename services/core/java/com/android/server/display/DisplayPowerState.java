@@ -20,6 +20,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemProperties;
 import android.os.Trace;
 import android.util.FloatProperty;
 import android.util.IntProperty;
@@ -49,7 +50,7 @@ import java.io.PrintWriter;
 final class DisplayPowerState {
     private static final String TAG = "DisplayPowerState";
 
-    private static boolean DEBUG = false;
+    private static boolean DEBUG = true;
     private static String COUNTER_COLOR_FADE = "ColorFadeLevel";
 
     private final Handler mHandler;
@@ -409,18 +410,25 @@ final class DisplayPowerState {
             }
         }
 
+
+        private int mHwActualState = INITIAL_SCREEN_STATE;
+        
+
         @Override
         public void run() {
             for (;;) {
                 // Get pending change.
                 final int state;
+                int hwState;
                 final boolean stateChanged;
                 final int backlight;
                 final boolean backlightChanged;
                 final int currState;
+                final int currHwState;
                 synchronized (mLock) {
 
                     currState = mActualState;
+                    currHwState = mHwActualState;
                     state = mPendingState;
                     stateChanged = (state != mActualState);
                     backlight = mPendingBacklight;
@@ -439,6 +447,11 @@ final class DisplayPowerState {
                         } catch (InterruptedException ex) { }
                         continue;
                     }
+                    hwState = state;
+                    if( state == Display.STATE_ON && SystemProperties.getBoolean("persist.doze.ovr_sup_doze", false) ) {
+                        hwState = Display.STATE_DOZE; 
+                    }
+                    mHwActualState = hwState;
                     mActualState = state;
                     mActualBacklight = backlight;
                 }
@@ -446,17 +459,17 @@ final class DisplayPowerState {
                 if (DEBUG) {
                     Slog.d(TAG, "Updating screen state: state=" + Display.stateToString(state) + ", backlight=" + backlight);
                 }
-                if( currState == Display.STATE_DOZE || currState == Display.STATE_DOZE_SUSPEND ) {
-                    if( state == Display.STATE_ON ) {
+                if( currHwState == Display.STATE_DOZE || currHwState == Display.STATE_DOZE_SUSPEND ) {
+                    if( hwState == Display.STATE_ON ) {
                         if (DEBUG) Slog.i(TAG, "Turning screen on from DOZE");
                         mBlanker.requestDisplayState(Display.STATE_OFF, backlight);
                     }
                 } 
-                if( currState == Display.STATE_OFF && ( state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND ) ) { 
+                if( currHwState == Display.STATE_OFF && ( hwState == Display.STATE_DOZE || hwState == Display.STATE_DOZE_SUSPEND ) ) { 
                     if (DEBUG) Slog.i(TAG, "Turning DOZE after OFF");
                     mBlanker.requestDisplayState(Display.STATE_ON, backlight);
                 }
-                mBlanker.requestDisplayState(state, backlight);
+                mBlanker.requestDisplayState(hwState, backlight);
             }
         }
     }
