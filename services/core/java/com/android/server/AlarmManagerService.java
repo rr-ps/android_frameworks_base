@@ -107,7 +107,7 @@ class AlarmManagerService extends SystemService {
     static final boolean DEBUG_LISTENER_CALLBACK = localLOGV || false;
     static final boolean DEBUG_WAKELOCK = localLOGV || false;
     static final boolean RECORD_ALARMS_IN_HISTORY = true;
-    static final boolean RECORD_DEVICE_IDLE_ALARMS = false;
+    static final boolean RECORD_DEVICE_IDLE_ALARMS = true;
     static final int ALARM_EVENT = 1;
     static final String TIMEZONE_PROPERTY = "persist.sys.timezone";
 
@@ -1175,7 +1175,10 @@ class AlarmManagerService extends SystemService {
 
         if (localLOGV) Slog.v(TAG, "Alarm: type=" + type + ", pkg=" + callingPackage + ", uid=" + callingUid + ", tag=" + blockTag + ", " + flags + ", alarmClock=" + alarmClock + ", ws=" + workSource );
 
-        if (operation != mTimeTickSender && alarmClock == null && ( type == AlarmManager.RTC_WAKEUP || type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) ) {
+
+        boolean disablePowerSave = SystemProperties.get("persist.pm.idle_disable", "0").equals("1");
+
+        if (!disablePowerSave && operation != mTimeTickSender && alarmClock == null && ( type == AlarmManager.RTC_WAKEUP || type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) ) {
 
             if (localLOGV)  Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag);
 
@@ -1263,7 +1266,7 @@ class AlarmManagerService extends SystemService {
             }
             // Add fuzz to make the alarm go off some time before the actual desired time.
             final long nowElapsed = SystemClock.elapsedRealtime();
-            final int fuzz = fuzzForDuration(a.whenElapsed-nowElapsed);
+            /*final int fuzz = fuzzForDuration(a.whenElapsed-nowElapsed);
             if (fuzz > 0) {
                 if (mRandom == null) {
                     mRandom = new Random();
@@ -1278,7 +1281,9 @@ class AlarmManagerService extends SystemService {
                     Slog.d(TAG, "Final when: " + a.whenElapsed);
                 }
                 a.when = a.maxWhenElapsed = a.whenElapsed;
-            }
+            }*/
+
+            
 
         } else if (mPendingIdleUntil != null) {
             // We currently have an idle until alarm scheduled; if the new alarm has
@@ -2535,7 +2540,7 @@ class AlarmManagerService extends SystemService {
     }
 
     static int fuzzForDuration(long duration) {
-        if (duration < 15*60*1000) {
+/*        if (duration < 15*60*1000) {
             // If the duration until the time is less than 15 minutes, the maximum fuzz
             // is the duration.
             return (int)duration;
@@ -2545,7 +2550,8 @@ class AlarmManagerService extends SystemService {
         } else {
             // Otherwise, we will fuzz by at most half an hour.
             return 30*60*1000;
-        }
+        }*/
+        return -1;
     }
 
     boolean checkAllowNonWakeupDelayLocked(long nowELAPSED) {

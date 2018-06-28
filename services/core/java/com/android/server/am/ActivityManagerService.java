@@ -1314,7 +1314,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     volatile boolean mProcessesReady = false;
     volatile boolean mSystemReady = false;
     volatile boolean mOnBattery = false;
-    volatile boolean mUpAndRunning = false;
+    volatile boolean mUpAndRunning = true;
     volatile int mFactoryTest;
 
     @GuardedBy("this") boolean mBooting = false;
@@ -8700,12 +8700,12 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     public boolean isAppStartModeDisabled(int uid, String packageName) {
         synchronized (this) {
-            return getAppStartModeLocked(uid, packageName, 0, -1, false, true)
+            return getAppStartModeLocked(uid, packageName, 0, -1, false, true, "")
                     == ActivityManager.APP_START_MODE_DISABLED;
         }
     }
 
-    void logGetAppStartModeLocked(int uid, String packageName, int packageTargetSdk, int allowed, String message) {
+    void logGetAppStartModeLocked(int uid, String packageName, int packageTargetSdk, int allowed, String logMsg, String message) {
 
         //if (!DEBUG_BACKGROUND_CHECK_) {
 
@@ -8716,26 +8716,26 @@ public class ActivityManagerService extends IActivityManager.Stub
         else if( allowed == ActivityManager.APP_START_MODE_DISABLED ) allowedStr = "DISABLED";
 
         if (packageTargetSdk >= Build.VERSION_CODES.O) {
-            Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + message);
+            Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
         } else  {
-            Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + message);
+            Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
         }
 
     }
 
     // Unified app-op and target sdk check
-    int appRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk, boolean idle) {
+    int appRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk, boolean idle, String logMsg) {
 
 
         // Non-persistent but background whitelisted?
         if (uidOnBackgroundWhitelist(uid)) {
-            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on background whitelist; not restricted");
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"on background whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
         // Is this app on the battery whitelist?
         if (isOnDeviceIdleWhitelistLocked(uid)) {
-            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on idle whitelist; not restricted");
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"on idle whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
@@ -8744,16 +8744,6 @@ public class ActivityManagerService extends IActivityManager.Stub
                 uid, packageName);
         if (DEBUG_BACKGROUND_CHECK) {
             Slog.i(TAG, "Legacy app " + uid + "/" + packageName + " bg appop " + appop);
-        }
-
-        // Apps that target O+ are always subject to background check
-        if (packageTargetSdk >= Build.VERSION_CODES.O) {
-            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID," targets O+, restricted");
-            if( appop == AppOpsManager.MODE_IGNORED || idle ) {
-                return ActivityManager.APP_START_MODE_DELAYED_RIGID;
-            } else {
-                return ActivityManager.APP_START_MODE_NORMAL;
-            }
         }
 
         boolean disabledByDefault = SystemProperties.get("persist.pm.bg_disable", "0").equals("1");
@@ -8766,21 +8756,54 @@ public class ActivityManagerService extends IActivityManager.Stub
             persistent = true;
         }
 
+        // Apps that target O+ are always subject to background check
+        if (packageTargetSdk >= Build.VERSION_CODES.O) {
+
+            if( idle && !persistent ) {
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, restricted");
+                return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+            }
+
+            if( appop == AppOpsManager.MODE_IGNORED ) {
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, disabled by appops");
+                return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+            }
+        }
+
+
         if( uid >= Process.FIRST_APPLICATION_UID && ( disabledByDefault || (disabledWhileScreenOff&&!mScreenOn) ) ) {
-            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED,"disabled by global preference");
-            return ActivityManager.APP_START_MODE_DELAYED;
+            if( packageTargetSdk >= Build.VERSION_CODES.O ) {   
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, restricted by global preference");
+                return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+            } else {
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED,logMsg," targets N-, disabled by global preference");
+                return ActivityManager.APP_START_MODE_DELAYED;
+            }
         }
 
         switch (appop) {
             case AppOpsManager.MODE_ALLOWED:
-                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"enabled by appops");
+                if( packageTargetSdk >= Build.VERSION_CODES.O )
+                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg," targets O+, enabled by appops");
+                else 
+                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg," targets N-, enabled by appops");
                 return ActivityManager.APP_START_MODE_NORMAL;
             case AppOpsManager.MODE_IGNORED:
-                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED,"disabled by appops");
-                return ActivityManager.APP_START_MODE_DELAYED;
+                if( packageTargetSdk >= Build.VERSION_CODES.O ) {   
+                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, disabled by appops");
+                    return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+                } else {
+                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED,logMsg," targets N-, disabled by appops");
+                    return ActivityManager.APP_START_MODE_DELAYED;
+                }
             default:
-                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,"unspecified by appops");
-                return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+                if( packageTargetSdk >= Build.VERSION_CODES.O ) {
+                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg," targets O+, unspecified by appops");
+                    return ActivityManager.APP_START_MODE_NORMAL;
+                } else {
+                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg," targets N-, unspecified by appops");
+                    return ActivityManager.APP_START_MODE_NORMAL;
+                }
         }
     }
 
@@ -8788,52 +8811,62 @@ public class ActivityManagerService extends IActivityManager.Stub
     // Service launch is available to apps with run-in-background exemptions but
     // some other background operations are not.  If we're doing a check
     // of service-launch policy, allow those callers to proceed unrestricted.
-    int appServicesRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk, boolean idle) {
+    int appServicesRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk, boolean idle, String logMsg) {
         // Persistent app?
         if (mPackageManagerInt.isPackagePersistent(packageName)) {
             int appop = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
                     uid, packageName);
             if( appop != AppOpsManager.MODE_IGNORED ) {
-                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"persistend app enabled by appops");
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg, "persistend app enabled by appops");
                 return ActivityManager.APP_START_MODE_NORMAL;
             }
         }
 
         // Non-persistent but background whitelisted?
         if (uidOnBackgroundWhitelist(uid)) {
-            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on background whitelist; not restricted");
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"on background whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
         // Is this app on the battery whitelist?
         if (isOnDeviceIdleWhitelistLocked(uid)) {
-            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on idle whitelist; not restricted");
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"on idle whitelist; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
 
         // None of the service-policy criteria apply, so we apply the common criteria
-        return appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, idle);
+        return appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, idle, logMsg);
     }
 
     int getAppStartModeLocked(int uid, String packageName, int packageTargetSdk,
-            int callingPid, boolean alwaysRestrict, boolean disabledOnly) {
+            int callingPid, boolean alwaysRestrict, boolean disabledOnly, String logMsg) {
 
-        int allowed = getAppStartModeLockedInternal(uid, packageName, packageTargetSdk, callingPid, alwaysRestrict, disabledOnly);
+        int allowed = getAppStartModeLockedInternal(uid, packageName, packageTargetSdk, callingPid, alwaysRestrict, disabledOnly, logMsg);
         return allowed;
     }
 
     int getAppStartModeLockedInternal(int uid, String packageName, int packageTargetSdk,
-            int callingPid, boolean alwaysRestrict, boolean disabledOnly) {
+            int callingPid, boolean alwaysRestrict, boolean disabledOnly, String logMsg) {
         UidRecord uidRec = mActiveUids.get(uid);
         if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG, "checkAllowBackground: uid=" + uid + " pkg="
                 + packageName + " rec=" + uidRec + " always=" + alwaysRestrict + " idle="
                 + (uidRec != null ? uidRec.idle : false));
 
         if(!mUpAndRunning) {
-            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"booting up; not restricted");
+            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"booting up; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
         if(mOnBattery) {
+
+
+            boolean disablePowerSave = SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
+                                   ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && mScreenOn ); 
+
+            if( disablePowerSave ) {
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"powersave disabled; not restricted");
+                return ActivityManager.APP_START_MODE_NORMAL;
+            }
+
         //if (uidRec == null || alwaysRestrict || uidRec.idle || mOnBattery) {
             boolean ephemeral;
             if (uidRec == null) {
@@ -8845,7 +8878,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
             if (ephemeral) {
                 // We are hard-core about ephemeral apps not running in the background.
-                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DISABLED,"ephemeral; disabled");
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DISABLED,logMsg,"ephemeral; disabled");
                 return ActivityManager.APP_START_MODE_DISABLED;
             } else {
                 if (disabledOnly) {
@@ -8853,44 +8886,58 @@ public class ActivityManagerService extends IActivityManager.Stub
                     // disabled for the given package (that is, it is an instant app).  So
                     // we don't need to go further, which is all just seeing if we should
                     // apply a "delayed" mode for a regular app.
-                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"disabled only check");
+                    // logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"disabled only check");
                     return ActivityManager.APP_START_MODE_NORMAL;
                 }
                 final int startMode = (alwaysRestrict)
-                        ? appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, uidRec != null ? uidRec.idle : true)
-                        : appServicesRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, uidRec != null ? uidRec.idle : true);
+                        ? appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, uidRec != null ? uidRec.idle : true, logMsg)
+                        : appServicesRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, uidRec != null ? uidRec.idle : true, logMsg);
                 if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG, "checkAllowBackground: uid=" + uid
                         + " pkg=" + packageName + " startMode=" + startMode
                         + " onwhitelist=" + isOnDeviceIdleWhitelistLocked(uid));
-                if (startMode != ActivityManager.APP_START_MODE_NORMAL) {
+                if (startMode != ActivityManager.APP_START_MODE_NORMAL && mScreenOn) {
                     // This is an old app that has been forced into a "compatible as possible"
                     // mode of background check.  To increase compatibility, we will allow other
                     // foreground apps to cause its services to start.
-                    if (callingPid >= 0 && ( PowerManagerService.getGmsUid() != uid  || mScreenOn )) {
+                    if (callingPid >= 0) {
+                        boolean blockIfGms = false;
+                        if( PowerManagerService.getGmsUid() == uid ) {
+                            blockIfGms = true;
+                            if(  mScreenOn && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") ) {
+                                blockIfGms = false;
+                            }
+                        }
+                        if( !blockIfGms ) {
                         ProcessRecord proc;
-                        synchronized (mPidsSelfLocked) {
-                            proc = mPidsSelfLocked.get(callingPid);
+                            synchronized (mPidsSelfLocked) {
+                                proc = mPidsSelfLocked.get(callingPid);
+                            }
+                            if (proc != null &&
+                                    !ActivityManager.isProcStateBackground(proc.curProcState)) {
+                                // Whoever is instigating this is in the foreground, so we will allow it
+                                // to go through.
+                                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"foreground app; not restricted");
+                                return ActivityManager.APP_START_MODE_NORMAL;
+                            }
                         }
-                        if (proc != null &&
-                                !ActivityManager.isProcStateBackground(proc.curProcState)) {
-                            // Whoever is instigating this is in the foreground, so we will allow it
-                            // to go through.
-                            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"foreground app; not restricted");
-                            return ActivityManager.APP_START_MODE_NORMAL;
-                        }
-                    }
+                    } 
+
                 }
                 return startMode;
             }
         }
-        logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,"on charger; not restricted");
+        logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"on charger; not restricted");
         return ActivityManager.APP_START_MODE_NORMAL;
     }
 
     boolean isOnDeviceIdleWhitelistLocked(int uid) {
         final int appId = UserHandle.getAppId(uid);
-        return Arrays.binarySearch(mDeviceIdleWhitelist, appId) >= 0
-                || Arrays.binarySearch(mDeviceIdleTempWhitelist, appId) >= 0
+        if(  Arrays.binarySearch(mDeviceIdleWhitelist, appId) >= 0 ) return true;
+
+        // GMS should not be whitelisted from tempWhitelist
+        if( uid == PowerManagerService.getGmsUid() ) return false;
+  
+        return Arrays.binarySearch(mDeviceIdleTempWhitelist, appId) >= 0
                 || mPendingTempWhitelist.indexOfKey(uid) >= 0;
     }
 
@@ -8913,7 +8960,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         Slog.d(TAG, "Processing Telegram activity");
         String uri = intent.toUri(0);
         if( uri == null ) return true;
-        if( uri.contains("S.badge=0") ) { 
+        if( uri.contains(".badge=0") ) { 
             Slog.d(TAG, "Muted Telegram channel activity");
             return false;
         }
@@ -8952,8 +8999,11 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
 
 
+            /*
             if( act.equals("android.media.action.OPEN_AUDIO_EFFECT_CONTROL_SESSION") || 
                 act.equals("android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION") ) return true;
+            */
+
 
     	    if( act.equals("android.os.action.DEVICE_IDLE_MODE_CHANGED") ) return true;
     	    if( act.equals("android.os.action.LIGHT_DEVICE_IDLE_MODE_CHANGED") ) return true;
@@ -8961,17 +9011,20 @@ public class ActivityManagerService extends IActivityManager.Stub
     	    if( act.equals("android.intent.action.SCREEN_ON") ) return true;
     	    if( act.equals("android.intent.action.ACTION_POWER_CONNECTED") ) return true;
     	    if( act.equals("android.intent.action.ACTION_POWER_DISCONNECTED") ) return true;
-            if( act.startsWith("android.intent.action.DOWNLOAD") ) return true;
-            if( act.startsWith("android.intent.action.PACKAGE") ) return true;
-            if( act.startsWith("android.intent.action.INTENT_FILTER") ) return true;
-            if( act.startsWith("com.android.vending.INTENT_PACKAGE") ) return true;
+
+
+    	    if( act.startsWith("android.bluetooth.device") ) return true;
+
 
                    
             if( pkg.equals("com.google.android.gms.persistent")  || 
                 pkg.equals("com.google.android.gms") ) {
 
-	    	    if( act.contains("android.net.conn.DATA_ACTIVITY_CHANGE") ) return true;
+                if( act.contains("com.google.android.gcm.intent") ) return true;
 
+                if( act.startsWith("android.bluetooth") ) return true;
+
+	    	    if( act.contains("android.net.conn.DATA_ACTIVITY_CHANGE") ) return true;
     	    	if( act.contains("com.google.android.intent.action.GCM_RECONNECT") ) return true;
 
         	    if( act.contains("com.google.android.gms.auth") ) return true;
@@ -8983,6 +9036,20 @@ public class ActivityManagerService extends IActivityManager.Stub
     	    	if( act.contains("com.google.android.gms.droidguard") ) return true;
     	    	if( act.contains("com.google.android.gms.deviceconnection") ) return true;
 
+            }
+
+
+            if( mScreenOn || SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) ) {
+                if( act.startsWith("com.qualcomm.location") ) return true;
+                if( act.startsWith("com.android.location") ) return true;
+                if( act.startsWith("com.google.android.location") ) return true;
+            }
+
+            if( mScreenOn ) {
+                if( act.startsWith("android.intent.action.DOWNLOAD") ) return true;
+                if( act.startsWith("android.intent.action.PACKAGE") ) return true;
+                if( act.startsWith("android.intent.action.INTENT_FILTER") ) return true;
+                if( act.startsWith("com.android.vending.INTENT_PACKAGE") ) return true;
             }
         }
 
@@ -9007,38 +9074,58 @@ public class ActivityManagerService extends IActivityManager.Stub
 
 	    //if( packageName == null ) return true;
         if( cls != null ) {
-                if( cls.contains("wear") ) return true;
-                if( cls.contains("Wear") ) return true;
+                //if( cls.contains("wear") ) return true;
+                //if( cls.contains("Wear") ) return true;
                 if( cls.startsWith("com.android.") ) return true;
-		        if( cls.contains("com.google.android.gms.auth") ) return true;
-		        if( cls.contains("com.google.android.gms.gcm") ) return true;
+		        if( cls.startsWith("com.google.android.gms.auth") ) return true;
+		        if( cls.startsWith("com.google.android.gms.gcm") ) return true;
 
+                if( cls.equals("com.google.android.gms.update.SystemUpdateService") ) return true;
 
 		        if( cls.equals("com.google.android.gms.thunderbird.OutgoingSmsListenerService") ) return true;
-		        if( cls.equals("com.google.android.gms.chimera.PersistentBoundBrokerService") ) return true;
-		        if( cls.equals("com.google.android.gms.chimera.GmsBoundBrokerService") ) return true;
 		        if( cls.equals("com.google.android.gms.pseudonymous.service.PseudonymousIdService") ) return true;
 		        if( cls.equals("com.google.android.gms.phenotype.service.PhenotypeService") ) return true;
-		        if( cls.equals("com.google.android.gms.chimera.PersistentIntentOperationService") ) return true;
-		        if( cls.equals("com.google.android.gms.backup.BackupTransportService") ) return true;
 		        if( cls.equals("com.google.android.contextmanager.service.ContextManagerService") ) return true;
 		        if( cls.equals("com.google.android.gms.wearable.service.WearableService") ) return true;
 
-                if( cls.startsWith("com.google.android.finsky.verifier.impl.Package") ) return true;
+		        if( cls.equals("com.google.android.gms.chimera.GmsBoundBrokerService") ) return true;
+		        if( cls.equals("com.google.android.gms.chimera.PersistentBoundBrokerService") ) return true;
+		        if( cls.equals("com.google.android.gms.chimera.PersistentIntentOperationService") ) return true;
+		        if( cls.equals("com.google.android.gms.chimera.PersistentApiService") ) return true;
+		        if( cls.equals("com.google.android.gms.chimera.GmsIntentOperationService") ) return true;
+
+
 
                 if( cls.contains("SafetyNetClientService") ) return true;
-        		if( cls.contains("com.google.android.gms.config.ConfigService") ) return true;
-        		if( cls.contains("com.google.android.gms.deviceconnection") ) return true;
-        		if( cls.contains("com.google.android.gms.lockbox") ) return true;
-        		if( cls.contains("com.google.android.gms.security.snet") ) return true;
-        		if( cls.contains("com.google.android.gms.droidguard") ) return true;
-        		if( cls.contains("com.google.android.gms.trustagent") ) return true;
-		        if( cls.contains("com.google.android.gms.chimera.GmsIntentOperationService") ) return true;
+        		if( cls.startsWith("com.google.android.gms.config.ConfigService") ) return true;
+        		if( cls.startsWith("com.google.android.gms.deviceconnection") ) return true;
+        		if( cls.startsWith("com.google.android.gms.lockbox") ) return true;
+        		if( cls.startsWith("com.google.android.gms.security.snet") ) return true;
+        		if( cls.startsWith("com.google.android.gms.droidguard") ) return true;
+        		if( cls.startsWith("com.google.android.gms.trustagent") ) return true;
+
                 if( cls.contains(".auth.") ) return true;
                 if( cls.contains(".trustagent") ) return true;
                 if( cls.contains(".trustlet") ) return true;
                 if( cls.contains(".droidguard") ) return true;
 
+                if( mScreenOn || SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
+                    if( cls.startsWith("com.qualcomm.location") ) return true;
+                    if( cls.startsWith("com.android.location") ) return true;
+                    if( cls.startsWith("com.google.android.location") ) return true;
+                }
+
+                if( mScreenOn ) {
+    		        if( cls.equals("com.google.android.gms.googlehelp.service.GoogleHelpService") ) return true;
+	    	        if( cls.equals("com.google.android.gms.chimera.UiIntentOperationService") ) return true;
+		            if( cls.equals("com.google.android.gms.photos.autobackup.AutoBackupWorkService") ) return true;
+    		        if( cls.equals("com.google.android.gms.backup.BackupTransportService") ) return true;
+    		        if( cls.equals("com.google.android.gms.games.chimera.GamesAsyncServiceProxy") ) return true;
+    		        if( cls.equals("com.google.android.gms.tapandpay.service.TapAndPayService") ) return true;
+    		        if( cls.equals("com.google.android.gms.plus.service.DefaultIntentService") ) return true;
+    		        if( cls.equals("com.google.android.gms.chimera.GmsApiService") ) return true;
+                    if( cls.startsWith("com.google.android.finsky.verifier.impl.Package") ) return true;
+                }
         }
 
 	    return false;
@@ -21311,7 +21398,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         int procState;
         boolean foregroundActivities = false;
         mTmpBroadcastQueue.clear();
-        if (app == TOP_APP) {
+        if (mTopProcessState != ActivityManager.PROCESS_STATE_TOP_SLEEPING && app == TOP_APP) {
             // The last app on the list is the foreground app.
             adj = ProcessList.FOREGROUND_APP_ADJ;
             schedGroup = ProcessList.SCHED_GROUP_TOP_APP;
@@ -22354,7 +22441,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         while (i > 0) {
             i--;
             ProcessRecord app = mLruProcesses.get(i);
-            if (app.setProcState >= ActivityManager.PROCESS_STATE_HOME) {
+            if (app.setProcState >= ActivityManager.PROCESS_STATE_HOME || app.setProcState == ActivityManager.PROCESS_STATE_TOP_SLEEPING ) {
                 if (app.lastCpuTime <= 0) {
                     continue;
                 }

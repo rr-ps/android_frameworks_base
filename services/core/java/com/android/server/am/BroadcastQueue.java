@@ -825,7 +825,7 @@ public final class BroadcastQueue {
 
     final void scheduleTempWhitelistLocked(int uid, long duration, BroadcastRecord r) {
         
-        //if( PowerManagerService.getGmsUid() == uid ) return;
+        if( PowerManagerService.getGmsUid() == uid ) return;
 
         if (duration > Integer.MAX_VALUE) {
             duration = Integer.MAX_VALUE;
@@ -1309,12 +1309,16 @@ public final class BroadcastQueue {
                     info.activityInfo.applicationInfo.uid, false);
 
             if (!skip) {
-                final int allowed = mService.getAppStartModeLocked(
+                int allowed = mService.getAppStartModeLocked(
                         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
-                        info.activityInfo.applicationInfo.targetSdkVersion, -1, true, false);
-                if (allowed != ActivityManager.APP_START_MODE_NORMAL) {
+                        info.activityInfo.applicationInfo.targetSdkVersion, -1, true, false, r.intent.toString() );
 
-                    if( !(allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) ) ) {
+                if( (allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) )  ) {
+                    allowed = ActivityManager.APP_START_MODE_NORMAL;
+                    Slog.i(TAG, "getAppStartModeLocked: allowed " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName + ", allowed=MODE_NORMAL, " + r.intent.toString() + ", code whitelisted");    
+                }
+
+                if (allowed != ActivityManager.APP_START_MODE_NORMAL) {
                         // We won't allow this receiver to be launched if the app has been
                         // completely disabled from launches, or it was not explicitly sent
                         // to it and the app is in a state that should not receive it
@@ -1337,7 +1341,6 @@ public final class BroadcastQueue {
                                 + component.flattenToShortString());
                             skip = true;
                         }
-                    }
                 }
             }
 

@@ -368,11 +368,12 @@ public final class ActiveServices {
             // Before going further -- if this app is not allowed to start services in the
             // background, then at this point we aren't going to let it period.
             int allowed = mAm.getAppStartModeLocked(r.appInfo.uid, r.packageName,
-                    r.appInfo.targetSdkVersion, callingPid, false, false);
+                    r.appInfo.targetSdkVersion, callingPid, false, false, r.toString());
 
             if (allowed == ActivityManager.APP_START_MODE_DELAYED) {
                 if( mAm.isWhiteListedService(r.name.getPackageName(),r.name.getClassName()) ) {
                     allowed = ActivityManager.APP_START_MODE_NORMAL;
+                    Slog.i(TAG, "getAppStartModeLocked: allowed " + r.appInfo.uid + "/" + r.name.getPackageName() + ", allowed=MODE_NORMAL, " + r.toString() + ", code whitelisted");    
                 }
             }
 
@@ -629,10 +630,11 @@ public final class ActiveServices {
                 ServiceRecord service = services.mServicesByName.valueAt(i);
                 if (service.appInfo.uid == uid && service.startRequested) {
                         int allowed = mAm.getAppStartModeLocked(service.appInfo.uid, service.packageName,
-                            service.appInfo.targetSdkVersion, -1, false, false);
+                            service.appInfo.targetSdkVersion, -1, false, false, service.name.getClassName());
                         if ( allowed  != ActivityManager.APP_START_MODE_NORMAL) {
 
                         if( mAm.isWhiteListedService(service.packageName,service.name.getClassName()) ) {
+                            Slog.i(TAG, "getAppStartModeLocked: allowed " + service.appInfo.uid + "/" + service.packageName + ", allowed=APP_START_MODE_NORMAL, " + service.name.getClassName() + ", code whitelisted");    
                             continue;
                         }
 

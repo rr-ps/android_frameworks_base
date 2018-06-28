@@ -471,28 +471,88 @@ public class LocationManagerService extends ILocationManager.Stub {
     //}
 
     private static boolean isImportanceForeground(String packageName, int importance) {
-        Log.d(TAG, "isImportanceForeground: package=" + packageName);
+
+        boolean disableThrottle = SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
+                                       (SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") 
+                                    && !SystemProperties.get("power.screen_off", "0").equals("1") ); 
+
+        if( disableThrottle ) {
+            Log.d(TAG, "isImportanceForeground: package=" + packageName + " PS disabled");
+            return true;
+        }
+
+        if( SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
+            Log.d(TAG, "isImportanceForeground: unrestricted GPS access turned ON :" + packageName);
+            return true;
+        }
+
+
+        //Log.d(TAG, "isImportanceForeground: package=" + packageName);
    	    if( SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
             if( packageName != null && ( 
                     packageName.equals("android") || 
+                    packageName.equals("com.google.android.gms") || 
                     packageName.equals("com.qualcomm.location") ) )  {
-                Log.d(TAG, "isImportanceForeground: force sysytem to background");
+                Log.d(TAG, "isImportanceForeground: force system to background :" + packageName);
                 return false;
             }
         }
-        if( importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE ) return true;
+
+        if( SystemProperties.get("power.screen_off", "0").equals("1") ) {
+            Log.d(TAG, "isImportanceForeground: screenoff foreground task :" + packageName);
+            return false;
+        }   
+
+        if( importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE ) {
+            Log.d(TAG, "isImportanceForeground: foreground task :" + packageName);
+            return true;
+        }
+        if( importance <= FOREGROUND_IMPORTANCE_CUTOFF ) {
+            Log.d(TAG, "isImportanceForeground: important task :" + packageName);
+            return true;
+        }
+        Log.d(TAG, "isImportanceForeground: unimportant task :" + packageName);
         return importance <= FOREGROUND_IMPORTANCE_CUTOFF;
     }
 
     private static boolean isImportanceForeground(int uid, int importance) {
-        Log.d(TAG, "isImportanceForeground: uid=" + uid);
+
+        boolean disableThrottle = SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
+                                   (   SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") 
+                                    && !SystemProperties.get("power.screen_off", "0").equals("1") ); 
+
+        if( disableThrottle ) {
+            Log.d(TAG, "isImportanceForeground: uid=" + uid + " PS disabled");
+            return true;
+        }
+
+        if( SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
+            Log.d(TAG, "isImportanceForeground: unrestricted GPS access turned ON :" + uid);
+            return true;
+        }
+
+        //Log.d(TAG, "isImportanceForeground: uid=" + uid);
    	    if( SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
             if( uid == Process.SYSTEM_UID ) { 
-                Log.d(TAG, "isImportanceForeground: force sysytem to background");
+                Log.d(TAG, "isImportanceForeground: force system to background :" + uid);
                 return false;
             }
         }
-        if( importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE ) return true;
+
+        if( SystemProperties.get("power.screen_off", "0").equals("1") ) {
+            Log.d(TAG, "isImportanceForeground: screenoff foreground task :" + uid);
+            return false;
+        }   
+
+        if( importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE ) {
+            Log.d(TAG, "isImportanceForeground: foreground task :" + uid);
+            return true;
+        }
+        if( importance <= FOREGROUND_IMPORTANCE_CUTOFF ) {
+            Log.d(TAG, "isImportanceForeground: important task :" + uid);
+            return true;
+        }
+        Log.d(TAG, "isImportanceForeground: unimportant task :" + uid);
         return importance <= FOREGROUND_IMPORTANCE_CUTOFF;
     }
 
@@ -1853,24 +1913,41 @@ public class LocationManagerService extends ILocationManager.Stub {
     }
 
     private boolean isThrottlingExemptLocked(Identity identity) {
-        if (identity.mUid == Process.SYSTEM_UID) {
+
+        if( SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
+            Log.d(TAG, "isImportanceForeground: unrestricted GPS access turned ON :" + identity.mPackageName);
+            return true;
+        }
+
+        if (identity.mUid == Process.SYSTEM_UID || 
+                    identity.mPackageName.equals("android") || 
+                    identity.mPackageName.equals("com.google.android.gms") || 
+                    identity.mPackageName.equals("com.qualcomm.location") ) {
+
 	        if( !SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
+                Log.d(TAG, "isImportanceForeground: system app - do not throttle by config :" + identity.mPackageName);
                 return true;
+            } else {
+                Log.d(TAG, "isImportanceForeground: system app - throttle by config :" + identity.mPackageName);
+                return false;
             }
         }
 
         if (mBackgroundThrottlePackageWhitelist.contains(identity.mPackageName)) {
        	    if( !SystemProperties.getBoolean("persist.ps.gpsthrottle", false) ) {
+                Log.d(TAG, "isImportanceForeground: do not throttle by whitelist :" + identity.mPackageName);
                 return true;
             }
         }
 
         for (LocationProviderProxy provider : mProxyProviders) {
             if (identity.mPackageName.equals(provider.getConnectedPackageName())) {
+                Log.d(TAG, "isImportanceForeground: do not throttle proxy :" + provider.getConnectedPackageName());
                 return true;
             }
         }
 
+        Log.d(TAG, "isImportanceForeground: throttle :" + identity.mPackageName);
         return false;
     }
 

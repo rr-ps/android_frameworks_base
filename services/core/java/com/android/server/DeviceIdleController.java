@@ -84,6 +84,7 @@ import com.android.internal.util.DumpUtils;
 import com.android.internal.util.FastXmlSerializer;
 import com.android.internal.util.XmlUtils;
 import com.android.server.am.BatteryStatsService;
+import com.android.server.power.PowerManagerService;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -1671,6 +1672,7 @@ public class DeviceIdleController extends SystemService
 
     void addPowerSaveTempWhitelistAppChecked(String packageName, long duration,
             int userId, String reason) throws RemoteException {
+
         getContext().enforceCallingPermission(
                 Manifest.permission.CHANGE_DEVICE_IDLE_TEMP_WHITELIST,
                 "No permission to change device idle whitelist");
@@ -1711,6 +1713,9 @@ public class DeviceIdleController extends SystemService
      */
     void addPowerSaveTempWhitelistAppDirectInternal(int callingUid, int appId,
             long duration, boolean sync, String reason) {
+
+        if( PowerManagerService.getGmsUid() == appId ) return;
+
         final long timeNow = SystemClock.elapsedRealtime();
         Runnable networkPolicyTempWhitelistCallback = null;
         synchronized (this) {
@@ -1918,9 +1923,10 @@ public class DeviceIdleController extends SystemService
                 mState = STATE_INACTIVE;
                 if (DEBUG) Slog.d(TAG, "Moved from STATE_ACTIVE to STATE_INACTIVE");
             	boolean aggressiveDeepIdle = SystemProperties.get(SYSTEM_PROPERTY_PM_DEEP_IDLE, "0").equals("1");
+                boolean disablePowerSave = SystemProperties.get("persist.pm.idle_disable", "0").equals("1");
 
 
-		        if( !aggressiveDeepIdle ) {
+		        if( !aggressiveDeepIdle || disablePowerSave ) {
                     mConstants.INACTIVE_TIMEOUT = 30 * 60 * 1000L;
                     mConstants.SENSING_TIMEOUT = 4 * 60 * 1000L;
                     mConstants.LOCATING_TIMEOUT = 30 * 1000L;

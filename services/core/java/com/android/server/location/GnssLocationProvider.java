@@ -570,6 +570,12 @@ public class GnssLocationProvider implements LocationProviderInterface {
                 disableGps |= result.batterySaverEnabled && !mPowerManager.isInteractive();
                 break;
         }
+
+        if( SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
+            Log.d(TAG, "isImportanceForeground: unrestricted GPS access turned ON");
+            disableGps = false;
+        }
+
         if (disableGps != mDisableGps) {
             mDisableGps = disableGps;
             updateRequirements();

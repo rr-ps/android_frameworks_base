@@ -1825,8 +1825,10 @@ public final class PowerManagerService extends SystemService
 
 	        if(mIsPowered) {
 		        SystemProperties.set("power.is_powered", "1");
+                setOnBatteryStatic(false);
     	    } else {
     		    SystemProperties.set("power.is_powered", "0");
+                setOnBatteryStatic(true);
     	    }
 
             if (DEBUG_SPEW_DOZE) {
@@ -2731,6 +2733,8 @@ public final class PowerManagerService extends SystemService
                 if (mDisplayState != state) {
                     mDisplayState = state;
                     if (state == Display.STATE_OFF) {
+		                SystemProperties.set("power.screen_off", "1");
+                        setScreenOnStatic(false);
                         if (!mDecoupleHalInteractiveModeFromDisplayConfig) {
                             setHalInteractiveModeLocked(false);
                         }
@@ -2738,6 +2742,8 @@ public final class PowerManagerService extends SystemService
                             setHalAutoSuspendModeLocked(true);
                         }
                     } else {
+                        setScreenOnStatic(true);
+		                SystemProperties.set("power.screen_on", "0");
                         if (!mDecoupleHalAutoSuspendModeFromDisplayConfig) {
                             setHalAutoSuspendModeLocked(false);
                         }
@@ -2929,6 +2935,7 @@ public final class PowerManagerService extends SystemService
 
     boolean isDeviceIdleModeInternal() {
         synchronized (mLock) {
+            if( !mIsPowered && !mDisplayPowerRequest.isBrightOrDim() ) return true;
             return mDeviceIdleMode;
         }
     }
@@ -3203,9 +3210,21 @@ public final class PowerManagerService extends SystemService
 
         if ((wakeLock.mFlags & PowerManager.WAKE_LOCK_LEVEL_MASK)
                 == PowerManager.PARTIAL_WAKE_LOCK) {
+
             int appid = UserHandle.getAppId(wakeLock.mOwnerUid);
 
+
 	        String appPackageName = wakeLock.mPackageName;
+
+ 	        if( appPackageName == null ) appPackageName = "android";
+
+            if( gmsUid == -1 ) {	
+	            if( appPackageName.equals("com.google.android.gms") ) {
+				    if( DEBUG ) Slog.i(TAG, "WL: found GMS appid=" + appid);
+				    gmsUid = appid;
+			    }   
+			}
+
 	        if (wakeLock.mWorkSource != null && wakeLock.mWorkSource.size() > 0 ) {
 	            appid = UserHandle.getAppId(wakeLock.mWorkSource.get(0));
 	            appPackageName = wakeLock.mWorkSource.getName(0);
@@ -3213,7 +3232,21 @@ public final class PowerManagerService extends SystemService
 
  	        if( appPackageName == null ) appPackageName = "android";
 
-	    	    if(wakeLock.mTag.equals("RingtonePlayer") ||
+            if( gmsUid == -1 ) {	
+	            if( appPackageName.equals("com.google.android.gms") ) {
+				    if( DEBUG ) Slog.i(TAG, "WL: found GMS appid=" + appid);
+				    gmsUid = appid;
+			    }   
+			}
+
+            boolean disablePowerSave = !SystemProperties.get("persist.pm.frmwk_wl_block", "0").equals("1") ||
+                                     SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
+                                   ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && mDisplayPowerRequest.isBrightOrDim() ); 
+
+
+                if( disablePowerSave ) {
+                    disabled = false;
+                } else if(wakeLock.mTag.equals("RingtonePlayer") ||
 		            wakeLock.mTag.equals("GOOGLE_C2DM") ||
 		            wakeLock.mTag.equals("GCM_READ") ||
 		            wakeLock.mTag.startsWith("Audio") ||
@@ -3235,12 +3268,6 @@ public final class PowerManagerService extends SystemService
 		            wakeLock.mTag.startsWith("bugle_") ) {
 		            disabled = true;
 		        } else if (appPackageName.startsWith("com.google.android.gms")) {
-			        if( gmsUid == -1 ) {	
-			            if( appPackageName.equals("com.google.android.gms") ) {
-				            if( DEBUG ) Slog.i(TAG, "WL: found GMS appid=" + appid);
-				            gmsUid = appid;
-			            }   
-			        }
 			        disabled = true;
 		        } else if (appPackageName.startsWith("org.omnirom.deskclock")) {
 			        disabled = false;
@@ -5048,7 +5075,7 @@ public final class PowerManagerService extends SystemService
         public void setDozeOverrideFromDreamManager(int screenState, int screenBrightness) {
 
             
-            Slog.e(TAG, "setDozeOverrideFromDreamManager: state=" + screenState, new Throwable());
+            Slog.e(TAG, "setDozeOverrideFromDreamManager: state=" + screenState /*, new Throwable() */);
             switch (screenState) {
                 case Display.STATE_UNKNOWN:
                 case Display.STATE_OFF:
@@ -5340,4 +5367,37 @@ public final class PowerManagerService extends SystemService
         msg.setAsynchronous(true);
         mHandler.sendMessageAtTime(msg, now + mButtonTimeout);
     }
+
+// SDV - Static PS methods
+
+    private static Object mStaticLock = new Object();
+
+    private static boolean mOnBattryStatic = false;
+    private static void setOnBatteryStatic(boolean onBattery) {
+        synchronized(mStaticLock) {
+            mOnBattryStatic = onBattery;
+        }
+    }
+
+    public static boolean isOnBatteryStatic() {
+        synchronized(mStaticLock) {
+            return mOnBattryStatic;
+        }
+    }
+
+    private static boolean mScreenOnStatic = true;
+    private static void setScreenOnStatic(boolean screenOn) {
+        synchronized(mStaticLock) {
+            mScreenOnStatic = screenOn;
+        }
+    }
+
+    public static boolean isScreenOnStatic() {
+        synchronized(mStaticLock) {
+            return mScreenOnStatic;
+        }
+    }
+
+    
+
 }
