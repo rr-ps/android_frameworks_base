@@ -1001,9 +1001,18 @@ public final class BatteryService extends SystemService {
                 return;
             }
 
+            int level = mBatteryProps.batteryLevel;
+
+            if( ( (mBatteryProps.maxChargingCurrent/1000) * (mBatteryProps.maxChargingVoltage/1000) ) > 7500000 ) {
+                Slog.d(TAG, "updateLightsLocked: fastcharge");
+                level = 0 - level;
+            } else {
+                Slog.d(TAG, "updateLightsLocked: slowcharge");
+            }
+
             LedValues ledValues = new LedValues(0 /* color */, mBatteryLedOn, mBatteryLedOff);
             mLineageBatteryLights.calcLights(ledValues,
-                    mBatteryProps.batteryLevel, mBatteryProps.batteryStatus,
+                    level, mBatteryProps.batteryStatus,
                     mBatteryProps.batteryLevel <= mLowBatteryWarningLevel);
 
             if (!ledValues.isEnabled()) {
