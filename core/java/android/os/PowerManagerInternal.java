@@ -73,7 +73,7 @@ public abstract class PowerManagerInternal {
      * as defined by {@link android.os.PowerManager#isInteractive}.
      */
     public static boolean isInteractive(int wakefulness) {
-        return wakefulness == WAKEFULNESS_AWAKE || wakefulness == WAKEFULNESS_DREAMING;
+        return wakefulness == WAKEFULNESS_AWAKE; // || wakefulness == WAKEFULNESS_DREAMING;
     }
 
     /**
