@@ -2613,6 +2613,7 @@ class AlarmManagerService extends SystemService {
             {
                 int result = waitForAlarm(mNativeData);
                 mLastWakeup = SystemClock.elapsedRealtime();
+                Slog.v(TAG, "AlarmTimer");
 
                 triggerList.clear();
 

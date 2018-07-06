@@ -8706,21 +8706,19 @@ public class ActivityManagerService extends IActivityManager.Stub
     }
 
     void logGetAppStartModeLocked(int uid, String packageName, int packageTargetSdk, int allowed, String logMsg, String message) {
+        //if (!DEBUG_BACKGROUND_CHECK) {
+            String allowedStr = "MODE_NORMAL";
 
-        //if (!DEBUG_BACKGROUND_CHECK_) {
+            if( allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) allowedStr = "MODE_DELAYED_RIGID";
+            else if( allowed == ActivityManager.APP_START_MODE_DELAYED ) allowedStr = "MODE_DELAYED";
+            else if( allowed == ActivityManager.APP_START_MODE_DISABLED ) allowedStr = "DISABLED";
 
-        String allowedStr = "MODE_NORMAL";
-
-        if( allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) allowedStr = "MODE_DELAYED_RIGID";
-        else if( allowed == ActivityManager.APP_START_MODE_DELAYED ) allowedStr = "MODE_DELAYED";
-        else if( allowed == ActivityManager.APP_START_MODE_DISABLED ) allowedStr = "DISABLED";
-
-        if (packageTargetSdk >= Build.VERSION_CODES.O) {
-            Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
-        } else  {
-            Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
-        }
-
+            if (packageTargetSdk >= Build.VERSION_CODES.O) {
+                Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
+            } else  {
+                Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
+            }
+        //}
     }
 
     // Unified app-op and target sdk check
@@ -8742,9 +8740,6 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         int appop = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
                 uid, packageName);
-        if (DEBUG_BACKGROUND_CHECK) {
-            Slog.i(TAG, "Legacy app " + uid + "/" + packageName + " bg appop " + appop);
-        }
 
         boolean disabledByDefault = SystemProperties.get("persist.pm.bg_disable", "0").equals("1");
         boolean disabledWhileScreenOff = SystemProperties.get("persist.pm.bg_so_disable", "0").equals("1");
@@ -8756,9 +8751,15 @@ public class ActivityManagerService extends IActivityManager.Stub
             persistent = true;
         }
 
+        /*
+        if( uid == PowerManagerService.getGmsUid() ) {
+            disabledByDefault = false;
+            disabledWhileScreenOff = false;
+        }
+        */
+
         // Apps that target O+ are always subject to background check
         if (packageTargetSdk >= Build.VERSION_CODES.O) {
-
             if( idle && !persistent ) {
                 logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, restricted");
                 return ActivityManager.APP_START_MODE_DELAYED_RIGID;
@@ -8848,9 +8849,15 @@ public class ActivityManagerService extends IActivityManager.Stub
     int getAppStartModeLockedInternal(int uid, String packageName, int packageTargetSdk,
             int callingPid, boolean alwaysRestrict, boolean disabledOnly, String logMsg) {
         UidRecord uidRec = mActiveUids.get(uid);
-        if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG, "checkAllowBackground: uid=" + uid + " pkg="
+
+
+        if( !disabledOnly ) {
+
+        /*if (DEBUG_BACKGROUND_CHECK)*/ Slog.d(TAG, "checkAllowBackground: uid=" + uid + " pkg="
                 + packageName + " rec=" + uidRec + " always=" + alwaysRestrict + " idle="
-                + (uidRec != null ? uidRec.idle : false));
+                + (uidRec != null ? uidRec.idle : false) + " msg=" + logMsg);
+
+        }
 
         if(!mUpAndRunning) {
             logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"booting up; not restricted");
@@ -8895,33 +8902,34 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG, "checkAllowBackground: uid=" + uid
                         + " pkg=" + packageName + " startMode=" + startMode
                         + " onwhitelist=" + isOnDeviceIdleWhitelistLocked(uid));
-                if (startMode != ActivityManager.APP_START_MODE_NORMAL && mScreenOn) {
-                    // This is an old app that has been forced into a "compatible as possible"
-                    // mode of background check.  To increase compatibility, we will allow other
-                    // foreground apps to cause its services to start.
-                    if (callingPid >= 0) {
-                        boolean blockIfGms = false;
-                        if( PowerManagerService.getGmsUid() == uid ) {
-                            blockIfGms = true;
-                            if(  mScreenOn && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") ) {
-                                blockIfGms = false;
-                            }
-                        }
-                        if( !blockIfGms ) {
-                        ProcessRecord proc;
-                            synchronized (mPidsSelfLocked) {
-                                proc = mPidsSelfLocked.get(callingPid);
-                            }
-                            if (proc != null &&
-                                    !ActivityManager.isProcStateBackground(proc.curProcState)) {
-                                // Whoever is instigating this is in the foreground, so we will allow it
-                                // to go through.
-                                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"foreground app; not restricted");
-                                return ActivityManager.APP_START_MODE_NORMAL;
-                            }
-                        }
-                    } 
+                if (startMode != ActivityManager.APP_START_MODE_NORMAL) {
 
+                    if( PowerManagerService.getGmsUid() != uid ||
+                        (mScreenOn && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") )  ) {
+
+                    if (callingPid >= 0) {
+                        ProcessRecord proc;
+                        synchronized (mPidsSelfLocked) {
+                            proc = mPidsSelfLocked.get(callingPid);
+                        }
+                        if ( proc != null &&
+                                !ActivityManager.isProcStateBackground(proc.curProcState) ) {
+                            // Whoever is instigating this is in the foreground, so we will allow it
+                            // to go through.
+                            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"foreground app; not restricted, proc=" + proc + " procState=" + proc.curProcState);
+                            return ActivityManager.APP_START_MODE_NORMAL;
+                        } 
+                    }
+
+                    if( startMode != ActivityManager.APP_START_MODE_NORMAL && ( uidRec != null && 
+                        !ActivityManager.isProcStateBackground(uidRec.curProcState) ) ) {
+                        // Whoever is instigating this is in the foreground, so we will allow it
+                        // to go through.
+                        logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"foreground app; not restricted, uidRec=" + uidRec + " procState=" + uidRec.curProcState);
+                        return ActivityManager.APP_START_MODE_NORMAL;
+                    }
+ 
+                    }
                 }
                 return startMode;
             }
@@ -8947,10 +8955,12 @@ public class ActivityManagerService extends IActivityManager.Stub
 	    String act = intent.getAction();
 
         if( act != null ) {
-	    	if( act.contains("android.intent.action.SCREEN_OFF") ) {
+	    	if( mScreenOn && act.contains("android.intent.action.SCREEN_OFF") ) {
+                Slog.d(TAG, "getAppStartModeLocked: SCREEN_OFF");
                 mScreenOn = false;
             }
-	    	if( act.contains("android.intent.action.SCREEN_ON") ) {
+	    	if( !mScreenOn && act.contains("android.intent.action.SCREEN_ON") ) {
+                Slog.d(TAG, "getAppStartModeLocked: SCREEN_ON");
                 mScreenOn = true;
             }
         }
@@ -8975,15 +8985,20 @@ public class ActivityManagerService extends IActivityManager.Stub
         return true;
     }
 
+    boolean isWhiteListedIntentNew(String packageName, Intent intent) {
+        updateScreenState(intent);
+        return false;
+    }
+
     boolean isWhiteListedIntent(String packageName, Intent intent) {
 
-        //if (DEBUG_BACKGROUND_CHECK)  {
+        if (DEBUG_BACKGROUND_CHECK)  {
             try { 
                 Slog.d(TAG,"Background execution check: Intent packageName=" + packageName + ", uri=" + intent.toUri(0));
             } catch(Exception e) {
                 Slog.d(TAG,"Background execution check: Intent packageName=" + packageName + ", intent=" + intent);
             }
-        //}
+        }
 
 	    String act = intent.getAction();
         String pkg = intent.getPackage();
@@ -9064,7 +9079,11 @@ public class ActivityManagerService extends IActivityManager.Stub
 	        }
 	    }
 
-        Slog.d(TAG,"Background execution not on a whitelist: Intent packageName=" + packageName + ", intent=" + intent);
+        //Slog.d(TAG,"Background execution not on a whitelist: Intent packageName=" + packageName + ", intent=" + intent);
+        return false;
+    }
+
+    boolean isWhiteListedServiceNew(String packageName,String cls) {
         return false;
     }
 
@@ -9081,6 +9100,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 		        if( cls.startsWith("com.google.android.gms.gcm") ) return true;
 
                 if( cls.equals("com.google.android.gms.update.SystemUpdateService") ) return true;
+                if( cls.equals("com.google.android.gms.udc.service.UdcContextInitService") ) return true;
 
 		        if( cls.equals("com.google.android.gms.thunderbird.OutgoingSmsListenerService") ) return true;
 		        if( cls.equals("com.google.android.gms.pseudonymous.service.PseudonymousIdService") ) return true;
@@ -21330,10 +21350,15 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     private final int computeOomAdjLocked(ProcessRecord app, int cachedAdj, ProcessRecord TOP_APP,
             boolean doingAll, long now) {
+
+        //Slog.d(TAG, "computeOomAdjLocked: " + app);
+
+
         if (mAdjSeq == app.adjSeq) {
             // This adjustment has already been computed.
             return app.curRawAdj;
         }
+
 
         if (app.thread == null) {
             app.adjSeq = mAdjSeq;
@@ -21607,6 +21632,7 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
         }
 
+        /*
         if (app == mPreviousProcess && app.activities.size() > 0) {
             if (adj > ProcessList.PREVIOUS_APP_ADJ) {
                 // This was the previous process that showed UI to the user.
@@ -21623,7 +21649,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                 app.adjType = "previous";
                 if (DEBUG_OOM_ADJ_REASON) Slog.d(TAG, "Raise to prev: " + app);
             }
-        }
+        } */
 
         if (false) Slog.i(TAG, "OOM " + app + ": initial adj=" + adj
                 + " reason=" + app.adjType);
@@ -23024,6 +23050,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         final long now = SystemClock.uptimeMillis();
         final long nowElapsed = SystemClock.elapsedRealtime();
         final long oldTime = now - ProcessList.MAX_EMPTY_TIME;
+        final long oldTimeScreenOff = now - 30*1000;
+
         final int N = mLruProcesses.size();
 
         if (false) {
@@ -23146,17 +23174,71 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                 // Count the number of process types.
                 switch (app.curProcState) {
+
+                    case ActivityManager.PROCESS_STATE_SERVICE:
+                        if( app == TOP_APP || app == mHomeProcess )  {
+                            break;
+                        }
+                        int activeConnections = 0;
+                        if( app.uidRecord != null && app.uidRecord.uid < Process.FIRST_APPLICATION_UID  ) {
+                            break;
+                        }
+
+                        for (int is = app.services.size()-1;is >= 0; is--) {
+                            ServiceRecord s = app.services.valueAt(is);
+
+                            for (int conni = s.connections.size()-1;conni >= 0;conni--) {
+                                ArrayList<ConnectionRecord> clist = s.connections.valueAt(conni);
+                                for (int icr = 0;i < clist.size();icr++) {
+                                    // XXX should compute this based on the max of
+                                    // all connected clients.
+                                    ConnectionRecord cr = clist.get(icr);
+                                    if (cr.binding.client == app) {
+                                        // Binding to ourself is not interesting.
+                                        continue;
+                                    }
+                                    activeConnections++;
+                                }
+                            }
+                        }                             
+
+                        if( app.uidRecord  != null ) {
+                            if (uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
+                                activeConnections++;
+                            }
+                        }
+
+                        if (activeConnections == 0 ) {
+                            if( numCached > cachedProcessLimit ||
+                                app.lastActivityTime < oldTime || 
+                                (app.lastActivityTime < oldTimeScreenOff && !mScreenOn) ) {
+
+                                for (int is = app.services.size()-1;is >= 0; is--) {
+                                    ServiceRecord s = app.services.valueAt(is);
+                                    s.stopIfKilled = true;
+                                }
+                                app.kill("self service cached #" + numCached, true);
+                            }
+                        }
+                        break;
                     case ActivityManager.PROCESS_STATE_CACHED_ACTIVITY:
                     case ActivityManager.PROCESS_STATE_CACHED_ACTIVITY_CLIENT:
+                        if( app == TOP_APP ) break;
                         mNumCachedHiddenProcs++;
                         numCached++;
-                        if (numCached > cachedProcessLimit) {
+                        if (numCached > cachedProcessLimit ||
+                            app.lastActivityTime < oldTime || 
+                            (app.lastActivityTime < oldTimeScreenOff && !mScreenOn) ) {
+
                             app.kill("cached #" + numCached, true);
                         }
                         break;
                     case ActivityManager.PROCESS_STATE_CACHED_EMPTY:
-                        if (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES
-                                && app.lastActivityTime < oldTime) {
+                        if( app == TOP_APP ) break;
+                        if (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES ||
+                            app.lastActivityTime < oldTime ||
+                            (app.lastActivityTime < oldTimeScreenOff && !mScreenOn) ) {
+
                             app.kill("empty for "
                                     + ((oldTime + ProcessList.MAX_EMPTY_TIME - app.lastActivityTime)
                                     / 1000) + "s", true);

@@ -825,7 +825,7 @@ public final class BroadcastQueue {
 
     final void scheduleTempWhitelistLocked(int uid, long duration, BroadcastRecord r) {
         
-        if( PowerManagerService.getGmsUid() == uid ) return;
+        //if( PowerManagerService.getGmsUid() == uid ) return;
 
         if (duration > Integer.MAX_VALUE) {
             duration = Integer.MAX_VALUE;
@@ -1311,7 +1311,7 @@ public final class BroadcastQueue {
             if (!skip) {
                 int allowed = mService.getAppStartModeLocked(
                         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
-                        info.activityInfo.applicationInfo.targetSdkVersion, -1, true, false, r.intent.toString() );
+                        info.activityInfo.applicationInfo.targetSdkVersion, -3, true, false, r.intent.toString() );
 
                 if( (allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) )  ) {
                     allowed = ActivityManager.APP_START_MODE_NORMAL;

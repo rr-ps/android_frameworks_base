@@ -71,12 +71,12 @@ final class ActivityManagerConstants extends ContentObserver {
 
     private static final int DEFAULT_MAX_CACHED_PROCESSES =
             SystemProperties.getInt("ro.vendor.qti.sys.fw.bg_apps_limit", 32);
-    private static final long DEFAULT_BACKGROUND_SETTLE_TIME = 60*1000;
+    private static final long DEFAULT_BACKGROUND_SETTLE_TIME = 30*1000;
     private static final long DEFAULT_FGSERVICE_MIN_SHOWN_TIME = 2*1000;
     private static final long DEFAULT_FGSERVICE_MIN_REPORT_TIME = 3*1000;
     private static final long DEFAULT_FGSERVICE_SCREEN_ON_BEFORE_TIME = 1*1000;
     private static final long DEFAULT_FGSERVICE_SCREEN_ON_AFTER_TIME = 5*1000;
-    private static final long DEFAULT_CONTENT_PROVIDER_RETAIN_TIME = 20*1000;
+    private static final long DEFAULT_CONTENT_PROVIDER_RETAIN_TIME = 10*1000;
     private static final long DEFAULT_GC_TIMEOUT = 5*1000;
     private static final long DEFAULT_GC_MIN_INTERVAL = 60*1000;
     private static final long DEFAULT_FULL_PSS_MIN_INTERVAL = 10*60*1000;
@@ -91,11 +91,11 @@ final class ActivityManagerConstants extends ContentObserver {
     private static final long DEFAULT_SERVICE_RESTART_DURATION = 1*1000;
     private static final long DEFAULT_SERVICE_RESET_RUN_DURATION = 60*1000;
     private static final int DEFAULT_SERVICE_RESTART_DURATION_FACTOR = 4;
-    private static final long DEFAULT_SERVICE_MIN_RESTART_TIME_BETWEEN = 10*1000;
-    private static final long DEFAULT_MAX_SERVICE_INACTIVITY = 30*60*1000;
+    private static final long DEFAULT_SERVICE_MIN_RESTART_TIME_BETWEEN = 5*1000;
+    private static final long DEFAULT_MAX_SERVICE_INACTIVITY = 5*60*1000;
     private static final long DEFAULT_BG_START_TIMEOUT = 15*1000;
-    private static final long DEFAULT_BOUND_SERVICE_CRASH_RESTART_DURATION = 30*60_000;
-    private static final int DEFAULT_BOUND_SERVICE_CRASH_MAX_RETRY = 16;
+    private static final long DEFAULT_BOUND_SERVICE_CRASH_RESTART_DURATION = 30*60*1000;
+    private static final int DEFAULT_BOUND_SERVICE_CRASH_MAX_RETRY = 5;
 
 
     // Maximum number of cached processes we will allow.

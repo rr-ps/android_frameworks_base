@@ -20,6 +20,7 @@ import android.annotation.NonNull;
 import android.content.Context;
 import android.os.SystemClock;
 import android.os.Trace;
+import android.os.Debug;
 import android.util.Slog;
 
 import java.lang.reflect.Constructor;
@@ -46,6 +47,7 @@ public class SystemServiceManager {
     private int mCurrentPhase = -1;
 
     SystemServiceManager(Context context) {
+        //Debug.startMethodTracing("/data/media/0/rrps/trace/system_server",32 * 1024 * 1024);
         mContext = context;
     }
 

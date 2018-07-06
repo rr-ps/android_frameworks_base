@@ -111,7 +111,7 @@ public class DeviceIdleController extends SystemService
     private static final String SYSTEM_PROPERTY_PM_DEEP_IDLE = "persist.pm.deep_idle";
     private static final String SYSTEM_PROPERTY_PM_FREE_NET = "persist.pm.free_net";
 
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
 
     private static final boolean COMPRESS_TIME = false;
 
@@ -1714,7 +1714,7 @@ public class DeviceIdleController extends SystemService
     void addPowerSaveTempWhitelistAppDirectInternal(int callingUid, int appId,
             long duration, boolean sync, String reason) {
 
-        if( PowerManagerService.getGmsUid() == appId ) return;
+        //if( PowerManagerService.getGmsUid() == appId ) return;
 
         final long timeNow = SystemClock.elapsedRealtime();
         Runnable networkPolicyTempWhitelistCallback = null;
@@ -1935,6 +1935,12 @@ public class DeviceIdleController extends SystemService
                     mConstants.IDLE_AFTER_INACTIVE_TIMEOUT = 30 * 60 * 1000L;
                     mConstants.IDLE_PENDING_TIMEOUT = 5 * 60 * 1000L;
                     mConstants.MAX_IDLE_PENDING_TIMEOUT = 10 * 60 * 1000L;
+                    mConstants.MIN_TIME_TO_ALARM = 60 * 60 * 1000L;
+                    mConstants.MAX_TEMP_APP_WHITELIST_DURATION = 5 * 60 * 1000L;
+                    mConstants.MMS_TEMP_APP_WHITELIST_DURATION = 60 * 1000L;
+                    mConstants.SMS_TEMP_APP_WHITELIST_DURATION = 20 * 1000L;
+                    mConstants.NOTIFICATION_WHITELIST_DURATION = 30 * 1000L;
+
 		        } else {
                     mConstants.INACTIVE_TIMEOUT = 500L;
                     mConstants.SENSING_TIMEOUT = 0L;
@@ -1944,8 +1950,11 @@ public class DeviceIdleController extends SystemService
                     mConstants.IDLE_AFTER_INACTIVE_TIMEOUT = 1000L;
                     mConstants.IDLE_PENDING_TIMEOUT = 3000L;
                     mConstants.MAX_IDLE_PENDING_TIMEOUT = 15000L;
-
-
+                    mConstants.MIN_TIME_TO_ALARM = 1 * 1000L;
+                    mConstants.MAX_TEMP_APP_WHITELIST_DURATION = 15 * 1000L;
+                    mConstants.MMS_TEMP_APP_WHITELIST_DURATION = 10 * 1000L;
+                    mConstants.SMS_TEMP_APP_WHITELIST_DURATION = 10 * 1000L;
+                    mConstants.NOTIFICATION_WHITELIST_DURATION = 15 * 1000L;
 		        }
 
 		        mInactiveTimeout = mConstants.INACTIVE_TIMEOUT;

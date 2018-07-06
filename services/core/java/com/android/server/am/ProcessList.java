@@ -139,7 +139,7 @@ final class ProcessList {
     static final int MIN_CACHED_APPS = 2;
 
     // We allow empty processes to stick around for at most 30 minutes.
-    static final long MAX_EMPTY_TIME = 30*60*1000;
+    static final long MAX_EMPTY_TIME = 5*60*1000;
 
     // Threshold of number of cached+empty where we consider memory critical.
     static final int TRIM_CRITICAL_THRESHOLD = 3;

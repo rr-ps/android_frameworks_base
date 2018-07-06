@@ -100,6 +100,15 @@ import com.android.server.lights.Light;
 import com.android.server.lights.LightsManager;
 import com.android.server.power.BatterySaverPolicy.ServiceType;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Locale;
+import java.util.Date;
+
+
+import android.os.Trace;
+import android.os.Debug;
+
 import lineageos.providers.LineageSettings;
 
 import java.io.BufferedReader;
@@ -2025,6 +2034,7 @@ public final class PowerManagerService extends SystemService
 
     void checkForLongWakeLocks() {
         synchronized (mLock) {
+            boolean changed = false;
             final long now = SystemClock.uptimeMillis();
             mNotifyLongDispatched = now;
             final long when = now - MIN_LONG_WAKE_CHECK_INTERVAL;
@@ -2038,6 +2048,7 @@ public final class PowerManagerService extends SystemService
                         if (wakeLock.mAcquireTime < when) {
                             // This wake lock has exceeded the long acquire time, report!
                             notifyWakeLockLongStartedLocked(wakeLock);
+                            changed = true;
                         } else {
                             // This wake lock could still become a long one, at this time.
                             long checkTime = wakeLock.mAcquireTime + MIN_LONG_WAKE_CHECK_INTERVAL;
@@ -2055,6 +2066,9 @@ public final class PowerManagerService extends SystemService
                 enqueueNotifyLongMsgLocked(nextCheckTime);
             } else {
                 mNotifyLongNextCheck = 0;
+            }
+            if( changed ) {
+                updateWakeLockDisabledStatesLocked();
             }
         }
     }
@@ -2732,9 +2746,12 @@ public final class PowerManagerService extends SystemService
             synchronized (mLock) {
                 if (mDisplayState != state) {
                     mDisplayState = state;
-                    if (state == Display.STATE_OFF) {
+                    if (state == Display.STATE_OFF || state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND ) {
 		                SystemProperties.set("power.screen_off", "1");
+		                SystemProperties.set("power.screen_on", "0");
+                        SystemProperties.set("pm.power_profile","0");
                         setScreenOnStatic(false);
+                        setScreenOffProfiling(true);
                         if (!mDecoupleHalInteractiveModeFromDisplayConfig) {
                             setHalInteractiveModeLocked(false);
                         }
@@ -2743,7 +2760,10 @@ public final class PowerManagerService extends SystemService
                         }
                     } else {
                         setScreenOnStatic(true);
-		                SystemProperties.set("power.screen_on", "0");
+		                SystemProperties.set("power.screen_off", "0");
+		                SystemProperties.set("power.screen_on", "1");
+                        SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
+                        setScreenOffProfiling(false);
                         if (!mDecoupleHalAutoSuspendModeFromDisplayConfig) {
                             setHalAutoSuspendModeLocked(false);
                         }
@@ -2771,8 +2791,31 @@ public final class PowerManagerService extends SystemService
                 return "state=" + Display.stateToString(mDisplayState);
             }
         }
-    };
 
+        private void setScreenOffProfiling(boolean start) {
+            if( start ) {
+                if( SystemProperties.get("persist.pm.idle_profile", "0").equals("1") ) {
+                    String suffix = "system_server";
+                    try {
+                        SimpleDateFormat formatter = new SimpleDateFormat("yyyy_MM_dd_HH_mm_ss", Locale.US);
+                        Date now = new Date();
+                        suffix = formatter.format(now);
+                        Slog.d(TAG, "trace: Starting background trace on " +  "/data/media/0/rrps/trace/" + suffix);
+                        Debug.startMethodTracing("/data/media/0/rrps/trace/" + suffix,32 * 1024 * 1024);
+                    } catch(Exception e) {
+                        Slog.d(TAG, "trace: Can't start trace on " +  "/data/media/0/rrps/trace/" + suffix, e);
+                    }
+                }
+            } else {
+                try {
+                    Debug.stopMethodTracing();
+                } catch(Exception e) {
+                }
+            }
+        }
+
+    };
+   
     private boolean shouldUseProximitySensorLocked() {
         return !mIsVrModeEnabled && (mWakeLockSummary & WAKE_LOCK_PROXIMITY_SCREEN_OFF) != 0;
     }
@@ -2935,7 +2978,8 @@ public final class PowerManagerService extends SystemService
 
     boolean isDeviceIdleModeInternal() {
         synchronized (mLock) {
-            if( !mIsPowered && !mDisplayPowerRequest.isBrightOrDim() ) return true;
+          	boolean aggressiveDeepIdle = SystemProperties.get("persist.pm.deep_idle", "0").equals("1");
+            if( aggressiveDeepIdle && !mIsPowered && !mDisplayPowerRequest.isBrightOrDim() ) return true;
             return mDeviceIdleMode;
         }
     }
@@ -3066,6 +3110,10 @@ public final class PowerManagerService extends SystemService
                 updateWakeLockDisabledStatesLocked();
             }
         }
+        synchronized (mStaticLock) {
+            mDeviceIdleWhitelistStatic = appids;
+        }
+
     }
 
     void setDeviceIdleTempWhitelistInternal(int[] appids) {
@@ -3075,6 +3123,10 @@ public final class PowerManagerService extends SystemService
                 updateWakeLockDisabledStatesLocked();
             }
         }
+        synchronized (mStaticLock) {
+            mDeviceIdleTempWhitelistStatic = appids;
+        }
+
     }
 
     void startUidChangesInternal() {
@@ -3207,16 +3259,23 @@ public final class PowerManagerService extends SystemService
     private boolean setWakeLockDisabledStateLocked(WakeLock wakeLock) {
 
         boolean disabled = false;
+        int appid = 999999;
+        int fappid = 999999;
+        String appPackageName = "android";
+        String fappPackageName = "android";
 
         if ((wakeLock.mFlags & PowerManager.WAKE_LOCK_LEVEL_MASK)
                 == PowerManager.PARTIAL_WAKE_LOCK) {
 
-            int appid = UserHandle.getAppId(wakeLock.mOwnerUid);
+            appid = UserHandle.getAppId(wakeLock.mOwnerUid);
+            fappid = appid;
 
 
-	        String appPackageName = wakeLock.mPackageName;
+	        appPackageName = wakeLock.mPackageName;
 
  	        if( appPackageName == null ) appPackageName = "android";
+            fappPackageName = appPackageName;
+
 
             if( gmsUid == -1 ) {	
 	            if( appPackageName.equals("com.google.android.gms") ) {
@@ -3225,7 +3284,7 @@ public final class PowerManagerService extends SystemService
 			    }   
 			}
 
-	        if (wakeLock.mWorkSource != null && wakeLock.mWorkSource.size() > 0 ) {
+	        /*if (wakeLock.mWorkSource != null && wakeLock.mWorkSource.size() > 0 ) {
 	            appid = UserHandle.getAppId(wakeLock.mWorkSource.get(0));
 	            appPackageName = wakeLock.mWorkSource.getName(0);
 	        }
@@ -3237,20 +3296,28 @@ public final class PowerManagerService extends SystemService
 				    if( DEBUG ) Slog.i(TAG, "WL: found GMS appid=" + appid);
 				    gmsUid = appid;
 			    }   
-			}
+			}*/
 
-            boolean disablePowerSave = !SystemProperties.get("persist.pm.frmwk_wl_block", "0").equals("1") ||
+            boolean disablePowerSave = 
                                      SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
                                    ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && mDisplayPowerRequest.isBrightOrDim() ); 
+
+                if( !wakeLock.mNotifiedLong ) {
+                    disablePowerSave |= !SystemProperties.get("persist.pm.frmwk_wl_block", "0").equals("1");
+                }
 
 
                 if( disablePowerSave ) {
                     disabled = false;
-                } else if(wakeLock.mTag.equals("RingtonePlayer") ||
+                } /*else if(wakeLock.mTag.equals("RingtonePlayer") ||
 		            wakeLock.mTag.equals("GOOGLE_C2DM") ||
 		            wakeLock.mTag.equals("GCM_READ") ||
 		            wakeLock.mTag.startsWith("Audio") ||
 		            wakeLock.mTag.contains("GcmIntent") ||
+                    wakeLock.mTag.equals("*wakelock*")  ||
+                    wakeLock.mTag.equals("*alarm*")  ||
+                    wakeLock.mTag.equals("*sync*")  ||
+                    wakeLock.mTag.equals("*job*")  ||
 		            wakeLock.mTag.equals("AlarmAsyncTask") ) {
 		 	        disabled = false;
 	            } else if( wakeLock.mTag.startsWith("*sync*") ||
@@ -3269,7 +3336,7 @@ public final class PowerManagerService extends SystemService
 		            disabled = true;
 		        } else if (appPackageName.startsWith("com.google.android.gms")) {
 			        disabled = true;
-		        } else if (appPackageName.startsWith("org.omnirom.deskclock")) {
+		        } */ else if (appPackageName.startsWith("org.omnirom.deskclock")) {
 			        disabled = false;
 	    	    } else if (appPackageName.startsWith("com.google.android.deskclock")) {
 			        disabled = false;
@@ -3282,7 +3349,7 @@ public final class PowerManagerService extends SystemService
                                 wakeLock.mUidState.mProcState > ActivityManager.PROCESS_STATE_RECEIVER;
                     }
 
-                    if  (!disabled && !mDisplayPowerRequest.isBrightOrDim()) {
+                    if  (!disabled /*&& !mDisplayPowerRequest.isBrightOrDim()*/ && appid != gmsUid ) {
                         //  if  (mDeviceIdleMode) {
                         // If we are in idle mode, we will also ignore all partial wake locks that are
                         // for application uids that are not whitelisted.
@@ -3297,6 +3364,9 @@ public final class PowerManagerService extends SystemService
         }
         if (wakeLock.mDisabled != disabled) {
             wakeLock.mDisabled = disabled;
+            if( disabled && ( appid <= Process.FIRST_APPLICATION_UID || appid == gmsUid || fappid <= Process.FIRST_APPLICATION_UID || fappid == gmsUid ) || !mDisplayPowerRequest.isBrightOrDim()  )  {
+	            Slog.i(TAG, "getAppStartModeLocked: SYS or GMS or IDLE wakelock disabled! " + wakeLock);
+            }
             return true;
         }
         return false;
@@ -5372,16 +5442,16 @@ public final class PowerManagerService extends SystemService
 
     private static Object mStaticLock = new Object();
 
-    private static boolean mOnBattryStatic = false;
+    private static boolean mOnBatteryStatic = false;
     private static void setOnBatteryStatic(boolean onBattery) {
         synchronized(mStaticLock) {
-            mOnBattryStatic = onBattery;
+            mOnBatteryStatic = onBattery;
         }
     }
 
     public static boolean isOnBatteryStatic() {
         synchronized(mStaticLock) {
-            return mOnBattryStatic;
+            return mOnBatteryStatic;
         }
     }
 
@@ -5398,6 +5468,27 @@ public final class PowerManagerService extends SystemService
         }
     }
 
-    
 
+
+    // Set of app ids that we will always respect the wake locks for.
+    static int[] mDeviceIdleWhitelistStatic = new int[0];
+
+    // Set of app ids that are temporarily allowed to acquire wakelocks due to high-pri message
+    static int[] mDeviceIdleTempWhitelistStatic = new int[0];
+
+
+    public static boolean isDeviceIdleWhitelisted(int uid) {
+            int appid = UserHandle.getAppId(uid);
+            synchronized(mStaticLock) {
+                return Arrays.binarySearch(mDeviceIdleWhitelistStatic, appid) >= 0;
+            }
+    }
+    
+    public static boolean isDeviceIdleTempWhitelisted(int uid) {
+            int appid = UserHandle.getAppId(uid);
+            synchronized(mStaticLock) {
+                return Arrays.binarySearch(mDeviceIdleTempWhitelistStatic, appid) >= 0;
+            }
+    }
 }
+
