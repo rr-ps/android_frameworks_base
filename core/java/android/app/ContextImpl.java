@@ -1521,6 +1521,7 @@ class ContextImpl extends Context {
                     //throw new IllegalStateException(
                     //        "Not allowed to start service " + service + ": " + cn.getClassName());
                     Log.w(TAG,"Not allowed to start service " + service + ": " + cn.getClassName());
+                    return null;
                 }
             }
             return cn;
