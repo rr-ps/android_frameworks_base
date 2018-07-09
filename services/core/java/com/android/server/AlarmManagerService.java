@@ -100,7 +100,7 @@ class AlarmManagerService extends SystemService {
     static final int TYPE_NONWAKEUP_MASK = 0x1; // low bit => non-wakeup
 
     static final String TAG = "AlarmManager";
-    static final boolean localLOGV = false;
+    static final boolean localLOGV = true;
     static final boolean DEBUG_BATCH = localLOGV || false;
     static final boolean DEBUG_VALIDATE = localLOGV || false;
     static final boolean DEBUG_ALARM_CLOCK = localLOGV || false;
@@ -1173,12 +1173,17 @@ class AlarmManagerService extends SystemService {
             blockTag = callingPackage + ":" + operation.getTag("");
 	    }   
 
-        if (localLOGV) Slog.v(TAG, "Alarm: type=" + type + ", pkg=" + callingPackage + ", uid=" + callingUid + ", tag=" + blockTag + ", " + flags + ", alarmClock=" + alarmClock + ", ws=" + workSource );
+        if (localLOGV) Slog.v(TAG, "Alarm: type=" + type + ", pkg=" + callingPackage + ", uid=" + callingUid + ", tag=" + blockTag + ", " + flags + ", alarmClock=" + alarmClock + ", ws=" + workSource + ", flags=" + flags);
 
 
         boolean disablePowerSave = SystemProperties.get("persist.pm.idle_disable", "0").equals("1");
 
-        if (!disablePowerSave && operation != mTimeTickSender && alarmClock == null && ( type == AlarmManager.RTC_WAKEUP || type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) ) {
+        if (!disablePowerSave && operation != mTimeTickSender && alarmClock == null && 
+             ( type == AlarmManager.RTC_WAKEUP || type == AlarmManager.ELAPSED_REALTIME_WAKEUP ||
+             ( flags&(AlarmManager.FLAG_ALLOW_WHILE_IDLE
+                    | AlarmManager.FLAG_ALLOW_WHILE_IDLE_UNRESTRICTED
+                    | AlarmManager.FLAG_WAKE_FROM_IDLE) )!=0 )
+             ) {
 
             if (localLOGV)  Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag);
 
@@ -1213,6 +1218,10 @@ class AlarmManagerService extends SystemService {
 
 	        if( blockAlarm ) {
                 if (localLOGV) Slog.v(TAG, "RTC Alarm: (blocked) " + type + " " + blockTag);
+
+                flags &= ~AlarmManager.FLAG_ALLOW_WHILE_IDLE;
+                flags &= ~AlarmManager.FLAG_ALLOW_WHILE_IDLE_UNRESTRICTED;
+                flags &= ~AlarmManager.FLAG_WAKE_FROM_IDLE;
 
                 if (type == AlarmManager.RTC_WAKEUP) {
                     type = AlarmManager.RTC;
