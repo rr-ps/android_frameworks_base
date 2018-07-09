@@ -3421,6 +3421,8 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     private int updateLruProcessInternalLocked(ProcessRecord app, long now, int index,
             String what, Object obj, ProcessRecord srcApp) {
+
+
         app.lastActivityTime = now;
 
         if (app.activities.size() > 0) {
@@ -3499,6 +3501,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         mLruSeq++;
         final long now = SystemClock.uptimeMillis();
+
         app.lastActivityTime = now;
 
         // First a quick reject: if the app is already at the position we will
@@ -23172,6 +23175,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                 applyOomAdjLocked(app, true, now, nowElapsed);
 
+
                 // Count the number of process types.
                 switch (app.curProcState) {
 
@@ -23180,9 +23184,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                             break;
                         }
                         int activeConnections = 0;
-                        if( app.uidRecord != null && app.uidRecord.uid < Process.FIRST_APPLICATION_UID  ) {
-                            break;
-                        }
+                        //if( app.uidRecord != null && app.uidRecord.uid < Process.FIRST_APPLICATION_UID  ) {
+                        //    break;
+                        //}
 
                         for (int is = app.services.size()-1;is >= 0; is--) {
                             ServiceRecord s = app.services.valueAt(is);
@@ -23202,10 +23206,16 @@ public class ActivityManagerService extends IActivityManager.Stub
                             }
                         }                             
 
-                        if( app.uidRecord  != null ) {
-                            if (uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
-                                activeConnections++;
+                        if( app.uidRecord.uid != 1000 ) {
+                            if( app.uidRecord  != null ) {
+                                if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
+                                    activeConnections++;
+                                }
                             }
+                        }
+
+                        if( app.uidRecord.uid == 1000 ) {
+                            Slog.d(TAG_OOM_ADJ, "updateOOM: app=" + app + ", ac=" + activeConnections + ", at=" + (now - app.lastActivityTime) );
                         }
 
                         if (activeConnections == 0 ) {
