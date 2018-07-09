@@ -294,30 +294,45 @@ public final class BatteryStatsService extends IBatteryStats.Stub
     }
 
     void noteProcessStart(String name, int uid) {
+        if( uid == 1000 ) {
+            Slog.w(TAG,"noteProcessStart: name=" + name);
+        }
         synchronized (mStats) {
             mStats.noteProcessStartLocked(name, uid);
         }
     }
 
     void noteProcessCrash(String name, int uid) {
+        if( uid == 1000 ) {
+            Slog.w(TAG,"noteProcessCrash: name=" + name);
+        }
         synchronized (mStats) {
             mStats.noteProcessCrashLocked(name, uid);
         }
     }
 
     void noteProcessAnr(String name, int uid) {
+        if( uid == 1000 ) {
+            Slog.w(TAG,"noteProcessAnr: name=" + name);
+        }
         synchronized (mStats) {
             mStats.noteProcessAnrLocked(name, uid);
         }
     }
 
     void noteProcessFinish(String name, int uid) {
+        if( uid == 1000 ) {
+            Slog.w(TAG,"noteProcessFinish: name=" + name);
+        }
         synchronized (mStats) {
             mStats.noteProcessFinishLocked(name, uid);
         }
     }
 
     void noteUidProcessState(int uid, int state) {
+        if( uid == 1000 ) {
+            Slog.w(TAG,"noteUidProcessState: state=" + state);
+        }
         synchronized (mStats) {
             mStats.noteUidProcessStateLocked(uid, state);
         }
