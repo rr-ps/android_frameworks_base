@@ -486,6 +486,12 @@ public class LocationManagerService extends ILocationManager.Stub {
             return true;
         }
 
+        if( SystemProperties.getBoolean("power.is_powered", false) )  {
+            Log.d(TAG, "isImportanceForeground: on charger, GPS access turned ON :" + packageName);
+            return true;
+        }
+
+
 
         //Log.d(TAG, "isImportanceForeground: package=" + packageName);
    	    if( SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
@@ -530,6 +536,12 @@ public class LocationManagerService extends ILocationManager.Stub {
             Log.d(TAG, "isImportanceForeground: unrestricted GPS access turned ON :" + uid);
             return true;
         }
+
+        if( SystemProperties.getBoolean("power.is_powered", false) )  {
+            Log.d(TAG, "isImportanceForeground: on charger, GPS access turned ON :" + uid);
+            return true;
+        }
+
 
         //Log.d(TAG, "isImportanceForeground: uid=" + uid);
    	    if( SystemProperties.getBoolean("persist.ps.gpsthrottle.sys", false) ) {
@@ -1916,6 +1928,11 @@ public class LocationManagerService extends ILocationManager.Stub {
 
         if( SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
             Log.d(TAG, "isImportanceForeground: unrestricted GPS access turned ON :" + identity.mPackageName);
+            return true;
+        }
+
+        if( SystemProperties.getBoolean("power.is_powered", false) )  {
+            Log.d(TAG, "isImportanceForeground: on charger, GPS access turned ON :" + identity.mPackageName);
             return true;
         }
 
