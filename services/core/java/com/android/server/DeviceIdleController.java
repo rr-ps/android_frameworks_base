@@ -1354,9 +1354,11 @@ public class DeviceIdleController extends SystemService
                 String pkg = allowPowerExceptIdle.valueAt(i);
                 try {
                     ApplicationInfo ai = pm.getApplicationInfo(pkg,
-                            PackageManager.MATCH_SYSTEM_ONLY);
+                            PackageManager.MATCH_ALL);
                     int appid = UserHandle.getAppId(ai.uid);
-                    if( !ai.packageName.startsWith("com.google.android.gms") ) {
+                    if( !ai.packageName.startsWith("com.google.android.gms") &&
+                        !ai.packageName.startsWith("com.android.vending") ) {
+                        Slog.d(TAG, "Adding App " + appid + " to system whitelist-except-idle. package: " + ai.packageName);
                         mPowerSaveWhitelistAppsExceptIdle.put(ai.packageName, appid);
                         mPowerSaveWhitelistSystemAppIdsExceptIdle.put(appid, true);
                     }
@@ -1368,11 +1370,13 @@ public class DeviceIdleController extends SystemService
                 String pkg = allowPower.valueAt(i);
                 try {
                     ApplicationInfo ai = pm.getApplicationInfo(pkg,
-                            PackageManager.MATCH_SYSTEM_ONLY);
+                            PackageManager.MATCH_ALL);
                     int appid = UserHandle.getAppId(ai.uid);
                     // These apps are on both the whitelist-except-idle as well
                     // as the full whitelist, so they apply in all cases.
-                    if( !ai.packageName.startsWith("com.google.android.gms") ) {
+                    if( !ai.packageName.startsWith("com.google.android.gms") &&
+                        !ai.packageName.startsWith("com.android.vending") ) {
+                        Slog.d(TAG, "Adding App " + appid + " to system whitelist. package: " + ai.packageName);
                         mPowerSaveWhitelistAppsExceptIdle.put(ai.packageName, appid);
                         mPowerSaveWhitelistSystemAppIdsExceptIdle.put(appid, true);
                         mPowerSaveWhitelistApps.put(ai.packageName, appid);
@@ -1714,7 +1718,7 @@ public class DeviceIdleController extends SystemService
     void addPowerSaveTempWhitelistAppDirectInternal(int callingUid, int appId,
             long duration, boolean sync, String reason) {
 
-        //if( PowerManagerService.getGmsUid() == appId ) return;
+        if( PowerManagerService.getGmsUid() == appId ) return;
 
         final long timeNow = SystemClock.elapsedRealtime();
         Runnable networkPolicyTempWhitelistCallback = null;
