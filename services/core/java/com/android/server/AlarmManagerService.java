@@ -100,7 +100,7 @@ class AlarmManagerService extends SystemService {
     static final int TYPE_NONWAKEUP_MASK = 0x1; // low bit => non-wakeup
 
     static final String TAG = "AlarmManager";
-    static final boolean localLOGV = true;
+    static final boolean localLOGV = false;
     static final boolean DEBUG_BATCH = localLOGV || false;
     static final boolean DEBUG_VALIDATE = localLOGV || false;
     static final boolean DEBUG_ALARM_CLOCK = localLOGV || false;
@@ -1185,19 +1185,20 @@ class AlarmManagerService extends SystemService {
                     | AlarmManager.FLAG_WAKE_FROM_IDLE) )!=0 )
              ) {
 
-            if (localLOGV)  Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag);
+            if (localLOGV)  Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag + " " + flags);
 
  	        int appid = 0;
 
 	        if( callingPackage != null && callingPackage.equals("com.google.android.deskclock") ) {
 		        blockAlarm = false;
 	        } else if( blockTag.contains("com.android.internal.telephony.data") ||
+                blockTag.contains("NETWORK_LINGER_COMPLETE") ||
 		        blockTag.contains("*sync") ||
 		        blockTag.contains("*job") || 
 		        blockTag.contains("APPWIDGET_UPDATE")) {
 		            blockAlarm = true;
-	        //} else if( blockTag.equals("android:WifiConnectivityManager Restart Scan") ) {
-	   	    //    blockAlarm = true;
+	        } else if( blockTag.equals("android:WifiConnectivityManager Restart Scan") ) {
+	   	        blockAlarm = true;
 	        } else if( callingPackage != null && callingPackage.startsWith("com.google.android.gms") ) {
 		        blockAlarm = true;
 	        } else {
@@ -1225,7 +1226,7 @@ class AlarmManagerService extends SystemService {
 
                 if (type == AlarmManager.RTC_WAKEUP) {
                     type = AlarmManager.RTC;
-                } else {
+                } else if( type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) {
                     type = AlarmManager.ELAPSED_REALTIME;
                 }
 	        }
