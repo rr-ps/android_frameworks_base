@@ -8952,6 +8952,12 @@ public class ActivityManagerService extends IActivityManager.Stub
                 || mPendingTempWhitelist.indexOfKey(uid) >= 0;
     }
 
+    boolean isOnDeviceIdleTempWhitelistLocked(int uid) {
+        final int appId = UserHandle.getAppId(uid);
+ 
+        return Arrays.binarySearch(mDeviceIdleTempWhitelist, appId) >= 0
+                || mPendingTempWhitelist.indexOfKey(uid) >= 0;
+    }
 
     void updateScreenState(Intent intent) {
         if( intent == null ) return;
@@ -9033,12 +9039,15 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     	    if( act.startsWith("android.bluetooth.device") ) return true;
 
+            if( act.startsWith("com.google.android.gms.auth") ) return true;
+            if( act.contains("com.google.android.gcm.intent") ) return true;
 
                    
             if( pkg.equals("com.google.android.gms.persistent")  || 
                 pkg.equals("com.google.android.gms") ) {
 
-                if( act.contains("com.google.android.gcm.intent") ) return true;
+                //if( act.startsWith("com.google.android.gms.auth") ) return true;
+                //if( act.contains("com.google.android.gcm.intent") ) return true;
 
                 if( act.startsWith("android.bluetooth") ) return true;
 
@@ -23053,7 +23062,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         final long now = SystemClock.uptimeMillis();
         final long nowElapsed = SystemClock.elapsedRealtime();
         final long oldTime = now - ProcessList.MAX_EMPTY_TIME;
-        final long oldTimeScreenOff = now - 30*1000;
+        final long oldTimeScreenOff = now - 180*1000;
 
         final int N = mLruProcesses.size();
 
@@ -23175,6 +23184,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                 applyOomAdjLocked(app, true, now, nowElapsed);
 
+                int allowed = AppOpsManager.MODE_ALLOWED;
 
                 // Count the number of process types.
                 switch (app.curProcState) {
@@ -23188,66 +23198,146 @@ public class ActivityManagerService extends IActivityManager.Stub
                         //    break;
                         //}
 
-                        for (int is = app.services.size()-1;is >= 0; is--) {
-                            ServiceRecord s = app.services.valueAt(is);
 
-                            for (int conni = s.connections.size()-1;conni >= 0;conni--) {
-                                ArrayList<ConnectionRecord> clist = s.connections.valueAt(conni);
-                                for (int icr = 0;i < clist.size();icr++) {
-                                    // XXX should compute this based on the max of
-                                    // all connected clients.
-                                    ConnectionRecord cr = clist.get(icr);
-                                    if (cr.binding.client == app) {
-                                        // Binding to ourself is not interesting.
-                                        continue;
-                                    }
-                                    activeConnections++;
-                                }
-                            }
-                        }                             
 
-                        if( app.uidRecord.uid != 1000 ) {
-                            if( app.uidRecord  != null ) {
+                        if( app.uidRecord  != null ) {
+                            if( app.uidRecord.uid != 1000 ) {
                                 if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
                                     activeConnections++;
                                 }
+                            } else {
+                                if (  isOnDeviceIdleTempWhitelistLocked(app.uidRecord.uid) ) {
+                                    activeConnections++;
+                                }
+                            }
+
+                            if( activeConnections == 0 ) {
+                                allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                                    app.info.uid, app.info.packageName);
+
+                                if( allowed != AppOpsManager.MODE_IGNORED ) {
+                                    activeConnections++;
+                                }
                             }
                         }
 
-                        if( app.uidRecord.uid == 1000 ) {
-                            Slog.d(TAG_OOM_ADJ, "updateOOM: app=" + app + ", ac=" + activeConnections + ", at=" + (now - app.lastActivityTime) );
-                        }
 
                         if (activeConnections == 0 ) {
-                            if( numCached > cachedProcessLimit ||
-                                app.lastActivityTime < oldTime || 
-                                (app.lastActivityTime < oldTimeScreenOff && !mScreenOn) ) {
+                            for (int is = app.services.size()-1;is >= 0; is--) {
+                                ServiceRecord s = app.services.valueAt(is);
+
+                                for (int conni = s.connections.size()-1;conni >= 0;conni--) {
+                                    ArrayList<ConnectionRecord> clist = s.connections.valueAt(conni);
+                                    for (int icr = 0;i < clist.size();icr++) {
+                                        // XXX should compute this based on the max of
+                                        // all connected clients.
+                                        ConnectionRecord cr = clist.get(icr);
+                                        if (cr.binding.client == app) {
+                                            // Binding to ourself is not interesting.
+                                            continue;
+                                        }
+                                        activeConnections++;
+                                    }
+                                }
+                            }    
+                        }                         
+
+                        if (activeConnections == 0 ) {
+                            if( (allowed == AppOpsManager.MODE_IGNORED && 
+                                (app.lastActivityTime < oldTimeScreenOff && !mScreenOn)  ) ) {
 
                                 for (int is = app.services.size()-1;is >= 0; is--) {
                                     ServiceRecord s = app.services.valueAt(is);
                                     s.stopIfKilled = true;
                                 }
+                                Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_SERVICE app=" + app + ", ac=" + activeConnections + ", at=" + (now - app.lastActivityTime) );
                                 app.kill("self service cached #" + numCached, true);
                             }
                         }
                         break;
+
                     case ActivityManager.PROCESS_STATE_CACHED_ACTIVITY:
+                    case ActivityManager.PROCESS_STATE_LAST_ACTIVITY:
                     case ActivityManager.PROCESS_STATE_CACHED_ACTIVITY_CLIENT:
-                        if( app == TOP_APP ) break;
+
                         mNumCachedHiddenProcs++;
                         numCached++;
-                        if (numCached > cachedProcessLimit ||
-                            app.lastActivityTime < oldTime || 
-                            (app.lastActivityTime < oldTimeScreenOff && !mScreenOn) ) {
 
+                        if( app == TOP_APP ) break;
+
+                        
+                        if( app.uidRecord  != null ) {
+                            if( app.uidRecord.uid != 1000 ) {
+                                if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
+                                    break;
+                                }
+                            } else {
+                                if (  isOnDeviceIdleTempWhitelistLocked(app.uidRecord.uid) ) {
+                                    break;
+                                }
+                            }
+
+                            allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                                app.info.uid, app.info.packageName);
+
+                            if( allowed != AppOpsManager.MODE_IGNORED ) {
+                                break;
+                            }
+                        }
+
+                        
+                        if ( (numCached > cachedProcessLimit && app.lastActivityTime < oldTime ) ||
+                            (allowed == AppOpsManager.MODE_IGNORED && 
+                            (app.lastActivityTime < oldTimeScreenOff) && 
+                                !mScreenOn && 
+                                app.curProcState != ActivityManager.PROCESS_STATE_LAST_ACTIVITY
+                                )  ) {
+
+                                for (int is = app.services.size()-1;is >= 0; is--) {
+                                    ServiceRecord s = app.services.valueAt(is);
+                                    s.stopIfKilled = true;
+                                }
+
+                            Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_CACHED_ACTIVITY app=" + app + ", at=" + (now - app.lastActivityTime) );
                             app.kill("cached #" + numCached, true);
                         }
                         break;
+
                     case ActivityManager.PROCESS_STATE_CACHED_EMPTY:
                         if( app == TOP_APP ) break;
-                        if (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES ||
-                            app.lastActivityTime < oldTime ||
-                            (app.lastActivityTime < oldTimeScreenOff && !mScreenOn) ) {
+
+                        if( app.uidRecord  != null ) {
+                            if( app.uidRecord.uid != 1000 ) {
+                                if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
+                                    break;
+                                }
+                            } else {
+                                if (  isOnDeviceIdleTempWhitelistLocked(app.uidRecord.uid) ) {
+                                    break;
+                                }
+                            }
+
+                            allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                                app.info.uid, app.info.packageName);
+
+                            if( allowed != AppOpsManager.MODE_IGNORED ) {
+                                break;
+                            }
+
+
+                        }
+
+                        if ( (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES && app.lastActivityTime < oldTime ) ||
+                            (allowed == AppOpsManager.MODE_IGNORED &&  
+                            (app.lastActivityTime < oldTimeScreenOff) && !mScreenOn)  ) {
+
+
+                                for (int is = app.services.size()-1;is >= 0; is--) {
+                                    ServiceRecord s = app.services.valueAt(is);
+                                    s.stopIfKilled = true;
+                                }
+
+                            Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_CACHED_EMPTY app=" + app + ", at=" + (now - app.lastActivityTime) );
 
                             app.kill("empty for "
                                     + ((oldTime + ProcessList.MAX_EMPTY_TIME - app.lastActivityTime)
