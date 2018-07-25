@@ -2746,10 +2746,10 @@ public final class PowerManagerService extends SystemService
             synchronized (mLock) {
                 if (mDisplayState != state) {
                     mDisplayState = state;
-                    if (state == Display.STATE_OFF || state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND ) {
+                    if (state == Display.STATE_OFF /*|| state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND */) {
+                        SystemProperties.set("pm.power_profile","9");
 		                SystemProperties.set("power.screen_off", "1");
 		                SystemProperties.set("power.screen_on", "0");
-                        SystemProperties.set("pm.power_profile","0");
                         setScreenOnStatic(false);
                         setScreenOffProfiling(true);
                         if (!mDecoupleHalInteractiveModeFromDisplayConfig) {
@@ -2760,9 +2760,9 @@ public final class PowerManagerService extends SystemService
                         }
                     } else {
                         setScreenOnStatic(true);
+                        SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
 		                SystemProperties.set("power.screen_off", "0");
 		                SystemProperties.set("power.screen_on", "1");
-                        SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
                         setScreenOffProfiling(false);
                         if (!mDecoupleHalAutoSuspendModeFromDisplayConfig) {
                             setHalAutoSuspendModeLocked(false);
