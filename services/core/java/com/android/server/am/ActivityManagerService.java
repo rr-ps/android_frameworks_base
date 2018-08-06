@@ -23251,7 +23251,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                         if (activeConnections == 0 ) {
                             if( (allowed == AppOpsManager.MODE_IGNORED && 
-                                (app.lastActivityTime < oldTimeScreenOff && !mScreenOn)  ) ) {
+                                (app.lastActivityTime < oldTimeScreenOff && !mScreenOn && mOnBattery)  ) ) {
 
                                 for (int is = app.services.size()-1;is >= 0; is--) {
                                     ServiceRecord s = app.services.valueAt(is);
@@ -23296,7 +23296,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                         if ( (numCached > cachedProcessLimit && app.lastActivityTime < oldTime ) ||
                             (allowed == AppOpsManager.MODE_IGNORED && 
                             (app.lastActivityTime < oldTimeScreenOff) && 
-                                !mScreenOn && 
+                                !mScreenOn && mOnBattery && 
                                 app.curProcState != ActivityManager.PROCESS_STATE_LAST_ACTIVITY
                                 )  ) {
 
@@ -23335,7 +23335,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                         }
 
                         if ( (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES && app.lastActivityTime < oldTime ) ||
-                            (allowed == AppOpsManager.MODE_IGNORED &&  
+                            (allowed == AppOpsManager.MODE_IGNORED && mOnBattery &&  
                             (app.lastActivityTime < oldTimeScreenOff) && !mScreenOn)  ) {
 
 
