@@ -2746,7 +2746,10 @@ public final class PowerManagerService extends SystemService
             synchronized (mLock) {
                 if (mDisplayState != state) {
                     mDisplayState = state;
-                    if (state == Display.STATE_OFF /*|| state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND */) {
+                    if (state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND ) {
+		                SystemProperties.set("power.screen_doze", "1");
+                    } else if (state == Display.STATE_OFF ) {
+		                SystemProperties.set("power.screen_doze", "0");
                         SystemProperties.set("pm.power_profile","9");
 		                SystemProperties.set("power.screen_off", "1");
 		                SystemProperties.set("power.screen_on", "0");
@@ -2760,6 +2763,7 @@ public final class PowerManagerService extends SystemService
                         }
                     } else {
                         setScreenOnStatic(true);
+		                SystemProperties.set("power.screen_doze", "0");
                         SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
 		                SystemProperties.set("power.screen_off", "0");
 		                SystemProperties.set("power.screen_on", "1");
