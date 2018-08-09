@@ -2604,9 +2604,20 @@ public final class PowerManagerService extends SystemService
     }
 
 
+
     private void onDisplayPowerPolicyChanging() {
         mHideGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_HIDE_GMS, "0").equals("1");
         mForceGMS = SystemProperties.get(SYSTEM_PROPERTY_PM_FORCE_GMS, "0").equals("1");
+
+
+        if( mDisplayPowerRequest.policy != DisplayPowerRequest.POLICY_OFF &&  mDisplayPowerRequest.policy != DisplayPowerRequest.POLICY_DOZE ) {
+            setScreenOnStatic(true);
+		    SystemProperties.set("power.screen_doze", "0");
+            SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
+		    SystemProperties.set("power.screen_off", "0");
+		    SystemProperties.set("power.screen_on", "1");
+        }
+
         if (DEBUG_SPEW_DOZE) {
               //Slog.d(TAG, "onDisplayPowerPolicyChanging: policy=" + mDisplayPowerRequest.policy);
         }
@@ -2617,7 +2628,7 @@ public final class PowerManagerService extends SystemService
         if (DEBUG_SPEW_DOZE) {
               Slog.d(TAG, "onDisplayPowerPolicyChanged: policy=" + mDisplayPowerRequest.policy);
         }
-        if( mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF ) {
+        if( mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF || mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_DOZE ) {
             if( !suspended ) {
                 //Slog.d(TAG, "onDisplayPowerPolicyChanged: suspend");
                 //((SystemSensorManager)mSensorManager).suspend(true);
@@ -2629,6 +2640,20 @@ public final class PowerManagerService extends SystemService
                 //((SystemSensorManager)mSensorManager).resume();
                 suspended = false;
             }
+        }
+
+        if (mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_DOZE ) {
+		    SystemProperties.set("power.screen_off", "1");
+		    SystemProperties.set("power.screen_on", "0");
+		    SystemProperties.set("power.screen_doze", "1");
+            SystemProperties.set("pm.power_profile","9");
+                    
+        } else if (mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF ) {
+		    SystemProperties.set("power.screen_doze", "0");
+            SystemProperties.set("pm.power_profile","9");
+		    SystemProperties.set("power.screen_off", "1");
+		    SystemProperties.set("power.screen_on", "0");
+            setScreenOnStatic(false);
         }
     }
 
@@ -2746,15 +2771,7 @@ public final class PowerManagerService extends SystemService
             synchronized (mLock) {
                 if (mDisplayState != state) {
                     mDisplayState = state;
-                    if (state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND ) {
-		                SystemProperties.set("power.screen_doze", "1");
-                    } else if (state == Display.STATE_OFF ) {
-		                SystemProperties.set("power.screen_doze", "0");
-                        SystemProperties.set("pm.power_profile","9");
-		                SystemProperties.set("power.screen_off", "1");
-		                SystemProperties.set("power.screen_on", "0");
-                        setScreenOnStatic(false);
-                        setScreenOffProfiling(true);
+                    if (state == Display.STATE_OFF || state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND) {
                         if (!mDecoupleHalInteractiveModeFromDisplayConfig) {
                             setHalInteractiveModeLocked(false);
                         }
@@ -2762,12 +2779,6 @@ public final class PowerManagerService extends SystemService
                             setHalAutoSuspendModeLocked(true);
                         }
                     } else {
-                        setScreenOnStatic(true);
-		                SystemProperties.set("power.screen_doze", "0");
-                        SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
-		                SystemProperties.set("power.screen_off", "0");
-		                SystemProperties.set("power.screen_on", "1");
-                        setScreenOffProfiling(false);
                         if (!mDecoupleHalAutoSuspendModeFromDisplayConfig) {
                             setHalAutoSuspendModeLocked(false);
                         }
@@ -3313,18 +3324,17 @@ public final class PowerManagerService extends SystemService
 
                 if( disablePowerSave ) {
                     disabled = false;
-                } /*else if(wakeLock.mTag.equals("RingtonePlayer") ||
+                } else if(wakeLock.mTag.equals("RingtonePlayer") ||
 		            wakeLock.mTag.equals("GOOGLE_C2DM") ||
 		            wakeLock.mTag.equals("GCM_READ") ||
 		            wakeLock.mTag.startsWith("Audio") ||
 		            wakeLock.mTag.contains("GcmIntent") ||
-                    wakeLock.mTag.equals("*wakelock*")  ||
+                    wakeLock.mTag.equals("*dexopt*")  ||
                     wakeLock.mTag.equals("*alarm*")  ||
-                    wakeLock.mTag.equals("*sync*")  ||
-                    wakeLock.mTag.equals("*job*")  ||
+                    wakeLock.mTag.equals("*walarm*")  ||
 		            wakeLock.mTag.equals("AlarmAsyncTask") ) {
 		 	        disabled = false;
-	            } else if( wakeLock.mTag.startsWith("*sync*") ||
+	            } /*else if( wakeLock.mTag.startsWith("*sync*") ||
 		            wakeLock.mTag.startsWith("*job*") ||
 		            wakeLock.mTag.startsWith("GCoreFlp") ||
 		            wakeLock.mTag.startsWith("NetworkStats") ||
@@ -3353,7 +3363,7 @@ public final class PowerManagerService extends SystemService
                                 wakeLock.mUidState.mProcState > ActivityManager.PROCESS_STATE_RECEIVER;
                     }
 
-                    if  (!disabled /*&& !mDisplayPowerRequest.isBrightOrDim()*/ && appid != gmsUid ) {
+                    if  (!disabled /*&& !mDisplayPowerRequest.isBrightOrDim() && appid != gmsUid */) {
                         //  if  (mDeviceIdleMode) {
                         // If we are in idle mode, we will also ignore all partial wake locks that are
                         // for application uids that are not whitelisted.
@@ -3366,6 +3376,11 @@ public final class PowerManagerService extends SystemService
                 }
 
         }
+
+        if( mDeviceIdleMode && ( appid == gmsUid || fappid == gmsUid )  && !disabled ) {
+	        Slog.i(TAG, "getAppStartModeLocked: GMS wakelock while idle! " + wakeLock);
+        }
+
         if (wakeLock.mDisabled != disabled) {
             wakeLock.mDisabled = disabled;
             if( disabled && ( appid <= Process.FIRST_APPLICATION_UID || appid == gmsUid || fappid <= Process.FIRST_APPLICATION_UID || fappid == gmsUid ) || !mDisplayPowerRequest.isBrightOrDim()  )  {
@@ -3373,6 +3388,7 @@ public final class PowerManagerService extends SystemService
             }
             return true;
         }
+        
         return false;
     }
 
