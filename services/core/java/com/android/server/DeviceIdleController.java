@@ -2089,14 +2089,14 @@ public class DeviceIdleController extends SystemService
         EventLogTags.writeDeviceIdleStep();
 
         final long now = SystemClock.elapsedRealtime();
-        if ((now+mConstants.MIN_TIME_TO_ALARM) > mAlarmManager.getNextWakeFromIdleTime()) {
+        /*if ((now+mConstants.MIN_TIME_TO_ALARM) > mAlarmManager.getNextWakeFromIdleTime()) {
             // Whoops, there is an upcoming alarm.  We don't actually want to go idle.
             if (mState != STATE_ACTIVE) {
                 becomeActiveLocked("alarm", Process.myUid());
                 becomeInactiveIfAppropriateLocked();
             }
             return;
-        }
+        }*/
 
         switch (mState) {
             case STATE_INACTIVE:
