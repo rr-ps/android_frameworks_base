@@ -2587,7 +2587,7 @@ class AlarmManagerService extends SystemService {
             Alarm alarm = triggerList.get(i);
             final boolean allowWhileIdle = (alarm.flags&AlarmManager.FLAG_ALLOW_WHILE_IDLE) != 0;
             try {
-                if (localLOGV) {
+                if (true /*localLOGV*/) {
                     Slog.v(TAG, "sending alarm " + alarm);
                 }
                 if (RECORD_ALARMS_IN_HISTORY) {
@@ -3258,7 +3258,7 @@ class AlarmManagerService extends SystemService {
                         alarm.type, alarm.statsTag, (alarm.operation == null) ? alarm.uid : -1,
                         true);
                 if (!mWakeLock.isHeld()) {
-                mWakeLock.acquire();
+                    mWakeLock.acquire();
                 }
                 mHandler.obtainMessage(AlarmHandler.REPORT_ALARMS_ACTIVE, 1, 0).sendToTarget();
             }
