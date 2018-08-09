@@ -3224,7 +3224,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             return !mService.mDisplayFrozen
                     && mService.mDisplayEnabled && mService.mPolicy.isScreenOn();
         }
-        return mDisplayInfo.state == Display.STATE_ON;
+        return mDisplayInfo.state != Display.STATE_OFF;
     }
 
     boolean okToAnimate() {

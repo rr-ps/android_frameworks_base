@@ -4095,7 +4095,7 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
                     if (displayState == Display.STATE_OFF && activityDisplay.mOffToken == null) {
                         activityDisplay.mOffToken =
                                 mService.acquireSleepToken("Display-off", displayId);
-                    } else if (displayState == Display.STATE_ON
+                    } else if (displayState != Display.STATE_OFF
                             && activityDisplay.mOffToken != null) {
                         activityDisplay.mOffToken.release();
                         activityDisplay.mOffToken = null;
