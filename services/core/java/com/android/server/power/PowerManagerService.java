@@ -3363,7 +3363,8 @@ public final class PowerManagerService extends SystemService
                                 wakeLock.mUidState.mProcState > ActivityManager.PROCESS_STATE_RECEIVER;
                     }
 
-                    if  (!disabled /*&& !mDisplayPowerRequest.isBrightOrDim() && appid != gmsUid */) {
+                    boolean checkWhitelist = (appid != gmsUid) | SystemProperties.get("persist.pm.block_gms_wl", "1").equals("1");
+                    if  (!disabled && checkWhitelist /*&& !mDisplayPowerRequest.isBrightOrDim() && appid != gmsUid */ ) {
                         //  if  (mDeviceIdleMode) {
                         // If we are in idle mode, we will also ignore all partial wake locks that are
                         // for application uids that are not whitelisted.
