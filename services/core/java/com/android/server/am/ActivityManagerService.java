@@ -1723,10 +1723,13 @@ public class ActivityManagerService extends IActivityManager.Stub
     static final int POST_PRIVACY_NOTIFICATION_MSG = 90;
     static final int CANCEL_PRIVACY_NOTIFICATION_MSG = 91;
 
+
     static final int FIRST_ACTIVITY_STACK_MSG = 100;
     static final int FIRST_BROADCAST_QUEUE_MSG = 200;
     static final int FIRST_COMPAT_MODE_MSG = 300;
     static final int FIRST_SUPERVISOR_STACK_MSG = 100;
+
+    static final int SCHEDULE_NEXT_OOMADJ_MSG = 400;
 
     static ServiceThread sKillThread = null;
     static KillHandler sKillHandler = null;
@@ -1975,6 +1978,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
+            case SCHEDULE_NEXT_OOMADJ_MSG: {
+                updateOomAdj();
+            } break;
             case UPDATE_CONFIGURATION_MSG: {
                 final ContentResolver resolver = mContext.getContentResolver();
                 Settings.System.putConfigurationForUser(resolver, (Configuration) msg.obj,
@@ -23063,13 +23069,26 @@ public class ActivityManagerService extends IActivityManager.Stub
         return success;
     }
 
+
+    final void scheduleNextOomAdj() {
+        mHandler.removeMessages(SCHEDULE_NEXT_OOMADJ_MSG);
+        Message msg = mHandler.obtainMessage(SCHEDULE_NEXT_OOMADJ_MSG);
+        mHandler.sendMessageDelayed(msg, 30000);
+    }
+
+    final void updateOomAdj() {
+        synchronized (ActivityManagerService.this) {
+            updateOomAdjLocked();
+        }
+    }
+
     final void updateOomAdjLocked() {
         final ActivityRecord TOP_ACT = resumedAppLocked();
         final ProcessRecord TOP_APP = TOP_ACT != null ? TOP_ACT.app : null;
         final long now = SystemClock.uptimeMillis();
         final long nowElapsed = SystemClock.elapsedRealtime();
         final long oldTime = now - ProcessList.MAX_EMPTY_TIME;
-        final long oldTimeScreenOff = now - 180*1000;
+        final long oldTimeScreenOff = now - 30*1000;
 
         final int N = mLruProcesses.size();
 
@@ -23206,6 +23225,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                         //}
 
 
+                        allowed = AppOpsManager.MODE_IGNORED;
 
                         if( app.uidRecord  != null ) {
                             if( app.uidRecord.uid != 1000 ) {
@@ -23219,12 +23239,12 @@ public class ActivityManagerService extends IActivityManager.Stub
                             }
 
                             if( activeConnections == 0 ) {
-                                allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
-                                    app.info.uid, app.info.packageName);
+                                //allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                                //    app.info.uid, app.info.packageName);
 
-                                if( allowed != AppOpsManager.MODE_IGNORED ) {
-                                    activeConnections++;
-                                }
+                                //if( allowed != AppOpsManager.MODE_IGNORED ) {
+                                //    activeConnections++;
+                                //}
                             }
                         }
 
@@ -23250,15 +23270,20 @@ public class ActivityManagerService extends IActivityManager.Stub
                         }                         
 
                         if (activeConnections == 0 ) {
-                            if( (allowed == AppOpsManager.MODE_IGNORED && 
-                                (app.lastActivityTime < oldTimeScreenOff && !mScreenOn && mOnBattery)  ) ) {
 
-                                for (int is = app.services.size()-1;is >= 0; is--) {
-                                    ServiceRecord s = app.services.valueAt(is);
-                                    s.stopIfKilled = true;
+                            Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check SVC app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
+                            if( (allowed == AppOpsManager.MODE_IGNORED && 
+                                (!mScreenOn && mOnBattery)  ) ) {
+                                if( app.lastActivityTime < oldTimeScreenOff ) {
+                                    for (int is = app.services.size()-1;is >= 0; is--) {
+                                        ServiceRecord s = app.services.valueAt(is);
+                                        s.stopIfKilled = true;
+                                    }
+                                    Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_SERVICE app=" + app + ", ac=" + activeConnections + ", at=" + (now - app.lastActivityTime) );
+                                    app.kill("self service cached #" + numCached, true);
+                                } else {
+                                    scheduleNextOomAdj();
                                 }
-                                Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_SERVICE app=" + app + ", ac=" + activeConnections + ", at=" + (now - app.lastActivityTime) );
-                                app.kill("self service cached #" + numCached, true);
                             }
                         }
                         break;
@@ -23272,7 +23297,8 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                         if( app == TOP_APP ) break;
 
-                        
+                        allowed = AppOpsManager.MODE_IGNORED;
+
                         if( app.uidRecord  != null ) {
                             if( app.uidRecord.uid != 1000 ) {
                                 if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
@@ -23284,35 +23310,42 @@ public class ActivityManagerService extends IActivityManager.Stub
                                 }
                             }
 
-                            allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
-                                app.info.uid, app.info.packageName);
+                            //allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                            //    app.info.uid, app.info.packageName);
 
-                            if( allowed != AppOpsManager.MODE_IGNORED ) {
-                                break;
-                            }
+                            //if( allowed != AppOpsManager.MODE_IGNORED ) {
+                            //    break;
+                            //}
                         }
 
                         
-                        if ( (numCached > cachedProcessLimit && app.lastActivityTime < oldTime ) ||
+                        Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check CAC app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
+                        if ( /*(numCached > cachedProcessLimit && app.lastActivityTime < oldTime ) ||*/
                             (allowed == AppOpsManager.MODE_IGNORED && 
-                            (app.lastActivityTime < oldTimeScreenOff) && 
-                                !mScreenOn && mOnBattery && 
-                                app.curProcState != ActivityManager.PROCESS_STATE_LAST_ACTIVITY
+                            
+                                !mScreenOn && mOnBattery 
+                                /*&& app.curProcState != ActivityManager.PROCESS_STATE_LAST_ACTIVITY*/
                                 )  ) {
 
+                            if(app.lastActivityTime < oldTimeScreenOff)  {
                                 for (int is = app.services.size()-1;is >= 0; is--) {
                                     ServiceRecord s = app.services.valueAt(is);
                                     s.stopIfKilled = true;
                                 }
 
-                            Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_CACHED_ACTIVITY app=" + app + ", at=" + (now - app.lastActivityTime) );
-                            app.kill("cached #" + numCached, true);
+                                Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_CACHED_ACTIVITY app=" + app + ", at=" + (now - app.lastActivityTime) );
+                                app.kill("cached #" + numCached, true);
+                            } else {
+                                scheduleNextOomAdj();
+                            }
                         }
                         break;
 
                     case ActivityManager.PROCESS_STATE_CACHED_EMPTY:
                         if( app == TOP_APP ) break;
 
+                        allowed = AppOpsManager.MODE_IGNORED;
+
                         if( app.uidRecord  != null ) {
                             if( app.uidRecord.uid != 1000 ) {
                                 if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
@@ -23324,31 +23357,36 @@ public class ActivityManagerService extends IActivityManager.Stub
                                 }
                             }
 
-                            allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
-                                app.info.uid, app.info.packageName);
+                            //allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                            //    app.info.uid, app.info.packageName);
 
-                            if( allowed != AppOpsManager.MODE_IGNORED ) {
-                                break;
-                            }
+                            //if( allowed != AppOpsManager.MODE_IGNORED ) {
+                            //    break;
+                            //}
 
 
                         }
 
+                        Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check CEM app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
                         if ( (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES && app.lastActivityTime < oldTime ) ||
-                            (allowed == AppOpsManager.MODE_IGNORED && mOnBattery &&  
-                            (app.lastActivityTime < oldTimeScreenOff) && !mScreenOn)  ) {
+                            (allowed == AppOpsManager.MODE_IGNORED && mOnBattery && !mScreenOn)  ) {
 
 
+                            if( (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES && app.lastActivityTime < oldTime ) ||
+                                ( app.lastActivityTime < oldTimeScreenOff ) ) {
                                 for (int is = app.services.size()-1;is >= 0; is--) {
                                     ServiceRecord s = app.services.valueAt(is);
                                     s.stopIfKilled = true;
                                 }
+    
+                                Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_CACHED_EMPTY app=" + app + ", at=" + (now - app.lastActivityTime) );
 
-                            Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM killed PROCESS_STATE_CACHED_EMPTY app=" + app + ", at=" + (now - app.lastActivityTime) );
-
-                            app.kill("empty for "
-                                    + ((oldTime + ProcessList.MAX_EMPTY_TIME - app.lastActivityTime)
-                                    / 1000) + "s", true);
+                                app.kill("empty for "
+                                        + ((oldTime + ProcessList.MAX_EMPTY_TIME - app.lastActivityTime)
+                                        / 1000) + "s", true);
+                            } else {
+                                scheduleNextOomAdj();
+                            }
                         } else {
                             numEmpty++;
                             if (numEmpty > emptyProcessLimit) {
