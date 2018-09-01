@@ -9116,6 +9116,8 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if( cls.startsWith("com.android.") ) return true;
 		        if( cls.startsWith("com.google.android.gms.auth") ) return true;
 		        if( cls.startsWith("com.google.android.gms.gcm") ) return true;
+		        if( cls.startsWith("com.google.android.gms.tapandpay") ) return true;
+
 
                 if( cls.equals("com.google.android.gms.update.SystemUpdateService") ) return true;
                 if( cls.equals("com.google.android.gms.udc.service.UdcContextInitService") ) return true;
@@ -9131,6 +9133,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 		        if( cls.equals("com.google.android.gms.chimera.PersistentIntentOperationService") ) return true;
 		        if( cls.equals("com.google.android.gms.chimera.PersistentApiService") ) return true;
 		        if( cls.equals("com.google.android.gms.chimera.GmsIntentOperationService") ) return true;
+
 
 
 
@@ -23073,7 +23076,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     final void scheduleNextOomAdj() {
         mHandler.removeMessages(SCHEDULE_NEXT_OOMADJ_MSG);
         Message msg = mHandler.obtainMessage(SCHEDULE_NEXT_OOMADJ_MSG);
-        mHandler.sendMessageDelayed(msg, 30000);
+        mHandler.sendMessageDelayed(msg, 900000);
     }
 
     final void updateOomAdj() {
@@ -23088,7 +23091,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         final long now = SystemClock.uptimeMillis();
         final long nowElapsed = SystemClock.elapsedRealtime();
         final long oldTime = now - ProcessList.MAX_EMPTY_TIME;
-        final long oldTimeScreenOff = now - 30*1000;
+        final long oldTimeScreenOff = now - 1800*1000;
 
         final int N = mLruProcesses.size();
 
@@ -23212,66 +23215,71 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                 int allowed = AppOpsManager.MODE_ALLOWED;
 
+                boolean disablePowerSave = 
+                                     SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
+                                   ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && mScreenOn ); 
+
+
                 // Count the number of process types.
                 switch (app.curProcState) {
 
                     case ActivityManager.PROCESS_STATE_SERVICE:
-                        if( app == TOP_APP || app == mHomeProcess )  {
+                        if( disablePowerSave || app == TOP_APP || app == mHomeProcess )  {
                             break;
                         }
+
                         int activeConnections = 0;
-                        //if( app.uidRecord != null && app.uidRecord.uid < Process.FIRST_APPLICATION_UID  ) {
-                        //    break;
-                        //}
 
+                        if( app.uidRecord != null && app.uidRecord.uid < Process.FIRST_APPLICATION_UID  ) {
+                            break;
+                        }
 
-                        allowed = AppOpsManager.MODE_IGNORED;
+                        //allowed = AppOpsManager.MODE_IGNORED;
 
                         if( app.uidRecord  != null ) {
-                            if( app.uidRecord.uid != 1000 ) {
-                                if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
-                                    activeConnections++;
-                                }
-                            } else {
-                                if (  isOnDeviceIdleTempWhitelistLocked(app.uidRecord.uid) ) {
-                                    activeConnections++;
-                                }
+                            if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
+                                activeConnections++;
                             }
 
                             if( activeConnections == 0 ) {
-                                //allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
-                                //    app.info.uid, app.info.packageName);
+                                allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                                    app.info.uid, app.info.packageName);
 
-                                //if( allowed != AppOpsManager.MODE_IGNORED ) {
-                                //    activeConnections++;
-                                //}
+                                if( allowed != AppOpsManager.MODE_IGNORED ) {
+                                    activeConnections++;
+                                }
                             }
                         }
 
-
-                        if (activeConnections == 0 ) {
-                            for (int is = app.services.size()-1;is >= 0; is--) {
-                                ServiceRecord s = app.services.valueAt(is);
-
-                                for (int conni = s.connections.size()-1;conni >= 0;conni--) {
-                                    ArrayList<ConnectionRecord> clist = s.connections.valueAt(conni);
-                                    for (int icr = 0;i < clist.size();icr++) {
-                                        // XXX should compute this based on the max of
-                                        // all connected clients.
-                                        ConnectionRecord cr = clist.get(icr);
-                                        if (cr.binding.client == app) {
-                                            // Binding to ourself is not interesting.
-                                            continue;
+                        
+                        try {
+                            if (activeConnections == 0 ) {
+                                for (int is = app.services.size()-1;is >= 0; is--) {
+                                    ServiceRecord s = app.services.valueAt(is);
+    
+                                    for (int conni = s.connections.size()-1;conni >= 0;conni--) {
+                                        ArrayList<ConnectionRecord> clist = s.connections.valueAt(conni);
+                                        for (int icr = 0;i < clist.size();icr++) {
+                                            // XXX should compute this based on the max of
+                                            // all connected clients.
+                                            ConnectionRecord cr = clist.get(icr);
+                                            if (cr.binding.client == app) {
+                                                // Binding to ourself is not interesting.
+                                                continue;
+                                            }
+                                            activeConnections++;
                                         }
-                                        activeConnections++;
                                     }
-                                }
-                            }    
-                        }                         
+                                }    
+                            }                         
+                        }
+                        catch(Exception e1) {
+                            activeConnections++;
+                        }
 
                         if (activeConnections == 0 ) {
 
-                            Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check SVC app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
+                            //Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check SVC app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
                             if( (allowed == AppOpsManager.MODE_IGNORED && 
                                 (!mScreenOn && mOnBattery)  ) ) {
                                 if( app.lastActivityTime < oldTimeScreenOff ) {
@@ -23291,35 +23299,32 @@ public class ActivityManagerService extends IActivityManager.Stub
                     case ActivityManager.PROCESS_STATE_CACHED_ACTIVITY:
                     case ActivityManager.PROCESS_STATE_LAST_ACTIVITY:
                     case ActivityManager.PROCESS_STATE_CACHED_ACTIVITY_CLIENT:
+                        if( app.uidRecord != null && app.uidRecord.uid < Process.FIRST_APPLICATION_UID  ) {
+                            break;
+                        }
+
+
+                        if( disablePowerSave || app == TOP_APP || app == mHomeProcess ) break;
+
+
+                        if( app.uidRecord  != null ) {
+                            if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
+                                break;
+                            }
+
+                            allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                                app.info.uid, app.info.packageName);
+
+                            if( allowed != AppOpsManager.MODE_IGNORED ) {
+                                break;
+                            }
+                        }
+
 
                         mNumCachedHiddenProcs++;
                         numCached++;
-
-                        if( app == TOP_APP ) break;
-
-                        allowed = AppOpsManager.MODE_IGNORED;
-
-                        if( app.uidRecord  != null ) {
-                            if( app.uidRecord.uid != 1000 ) {
-                                if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
-                                    break;
-                                }
-                            } else {
-                                if (  isOnDeviceIdleTempWhitelistLocked(app.uidRecord.uid) ) {
-                                    break;
-                                }
-                            }
-
-                            //allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
-                            //    app.info.uid, app.info.packageName);
-
-                            //if( allowed != AppOpsManager.MODE_IGNORED ) {
-                            //    break;
-                            //}
-                        }
-
                         
-                        Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check CAC app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
+                        //Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check CAC app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
                         if ( /*(numCached > cachedProcessLimit && app.lastActivityTime < oldTime ) ||*/
                             (allowed == AppOpsManager.MODE_IGNORED && 
                             
@@ -23342,32 +23347,22 @@ public class ActivityManagerService extends IActivityManager.Stub
                         break;
 
                     case ActivityManager.PROCESS_STATE_CACHED_EMPTY:
-                        if( app == TOP_APP ) break;
+
+                        if( app.uidRecord != null && app.uidRecord.uid < Process.FIRST_APPLICATION_UID  ) {
+                            break;
+                        }
+
+                        if( disablePowerSave || app == TOP_APP || app == mHomeProcess ) break;
 
                         allowed = AppOpsManager.MODE_IGNORED;
 
                         if( app.uidRecord  != null ) {
-                            if( app.uidRecord.uid != 1000 ) {
-                                if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
-                                    break;
-                                }
-                            } else {
-                                if (  isOnDeviceIdleTempWhitelistLocked(app.uidRecord.uid) ) {
-                                    break;
-                                }
+                            if (  uidOnBackgroundWhitelist(app.uidRecord.uid) || isOnDeviceIdleWhitelistLocked(app.uidRecord.uid) ) {
+                                break;
                             }
-
-                            //allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
-                            //    app.info.uid, app.info.packageName);
-
-                            //if( allowed != AppOpsManager.MODE_IGNORED ) {
-                            //    break;
-                            //}
-
-
                         }
 
-                        Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check CEM app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
+                        //Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check CEM app app=" + app + ", at=" + (now - app.lastActivityTime) + ", so=" + mScreenOn + ", al=" + allowed + ", ob=" +  mOnBattery);
                         if ( (numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES && app.lastActivityTime < oldTime ) ||
                             (allowed == AppOpsManager.MODE_IGNORED && mOnBattery && !mScreenOn)  ) {
 
@@ -23390,7 +23385,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                         } else {
                             numEmpty++;
                             if (numEmpty > emptyProcessLimit) {
-                                app.kill("empty #" + numEmpty, true);
+                                //app.kill("empty #" + numEmpty, true);
                             }
                         }
                         break;
