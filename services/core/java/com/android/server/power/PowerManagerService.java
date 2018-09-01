@@ -2857,6 +2857,9 @@ public final class PowerManagerService extends SystemService
         if (needWakeLockSuspendBlocker && !mHoldingWakeLockSuspendBlocker) {
             mWakeLockSuspendBlocker.acquire();
             mHoldingWakeLockSuspendBlocker = true;
+            if( !needDisplaySuspendBlocker ) {
+                SystemProperties.set("pm.power_profile","0");
+            } 
         }
         if (needDisplaySuspendBlocker && !mHoldingDisplaySuspendBlocker) {
             mDisplaySuspendBlocker.acquire();
@@ -2883,10 +2886,18 @@ public final class PowerManagerService extends SystemService
         if (!needWakeLockSuspendBlocker && mHoldingWakeLockSuspendBlocker) {
             mWakeLockSuspendBlocker.release();
             mHoldingWakeLockSuspendBlocker = false;
+            if( !needDisplaySuspendBlocker ) {
+                SystemProperties.set("pm.power_profile","9");
+            }
         }
         if (!needDisplaySuspendBlocker && mHoldingDisplaySuspendBlocker) {
             mDisplaySuspendBlocker.release();
             mHoldingDisplaySuspendBlocker = false;
+            if( needWakeLockSuspendBlocker ) {
+                SystemProperties.set("pm.power_profile","0");
+            } else {
+                SystemProperties.set("pm.power_profile","9");
+            }
         }
 
         // Enable auto-suspend if needed.
@@ -3322,6 +3333,13 @@ public final class PowerManagerService extends SystemService
                 }
 
 
+/* wakeLock.mTag.startsWith("*sync*") ||
+wakeLock.mTag.startsWith("*job*") ||
+wakeLock.mTag.startsWith("RILJ") ||
+wakeLock.mTag.startsWith("SyncLoop") ||
+wakeLock.mTag.startsWith("SyncMgr") ||
+*/
+
                 if( disablePowerSave ) {
                     disabled = false;
                 } else if(wakeLock.mTag.equals("RingtonePlayer") ||
@@ -3334,23 +3352,19 @@ public final class PowerManagerService extends SystemService
                     wakeLock.mTag.equals("*walarm*")  ||
 		            wakeLock.mTag.equals("AlarmAsyncTask") ) {
 		 	        disabled = false;
-	            } /*else if( wakeLock.mTag.startsWith("*sync*") ||
-		            wakeLock.mTag.startsWith("*job*") ||
+	            } else if( 
 		            wakeLock.mTag.startsWith("GCoreFlp") ||
 		            wakeLock.mTag.startsWith("NetworkStats") ||
 		            wakeLock.mTag.startsWith("*net_scheduler*") ||
 		            wakeLock.mTag.startsWith("Gnss") ||
 		            wakeLock.mTag.startsWith("Nlp") ||
-		            //wakeLock.mTag.startsWith("RILJ") ||
-		            wakeLock.mTag.startsWith("SyncLoop") ||
-		            wakeLock.mTag.startsWith("SyncMgr") ||
 		            wakeLock.mTag.startsWith("LocWeather") ||
 		            wakeLock.mTag.startsWith("AlarmService#updateNtp") ||
 		            wakeLock.mTag.startsWith("bugle_") ) {
 		            disabled = true;
-		        } else if (appPackageName.startsWith("com.google.android.gms")) {
+		        } /*else if (appPackageName.startsWith("com.google.android.gms") && SystemProperties.get("persist.pm.block_gms_wl", "1").equals("1")) {
 			        disabled = true;
-		        } */ else if (appPackageName.startsWith("org.omnirom.deskclock")) {
+		        }  */else if (appPackageName.startsWith("org.omnirom.deskclock")) {
 			        disabled = false;
 	    	    } else if (appPackageName.startsWith("com.google.android.deskclock")) {
 			        disabled = false;
