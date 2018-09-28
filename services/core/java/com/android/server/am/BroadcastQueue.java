@@ -1309,14 +1309,25 @@ public final class BroadcastQueue {
                     info.activityInfo.applicationInfo.uid, false);
 
             if (!skip) {
-                int allowed = mService.getAppStartModeLocked(
+                int allowed = ActivityManager.APP_START_MODE_DELAYED;
+   
+                allowed = mService.getAppStartModeLocked(
                         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
                         info.activityInfo.applicationInfo.targetSdkVersion, -3, true, false, r.intent.toString() );
 
-                if( (allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) )  ) {
+                if( ((allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) )  ) {
                     allowed = ActivityManager.APP_START_MODE_NORMAL;
                     Slog.i(TAG, "getAppStartModeLocked: allowed " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName + ", allowed=MODE_NORMAL, " + r.intent.toString() + ", code whitelisted");    
                 }
+
+
+/*
+
+                                && r.intent.getPackage() == null
+                                && ((r.intent.getFlags()
+                                        & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0)
+                                && !isSignaturePerm(r.requiredPermissions))) {
+*/
 
                 if (allowed != ActivityManager.APP_START_MODE_NORMAL) {
                         // We won't allow this receiver to be launched if the app has been
@@ -1330,19 +1341,26 @@ public final class BroadcastQueue {
                             skip = true;
                         } else if (((r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0)
                             || (r.intent.getComponent() == null
-                                && r.intent.getPackage() == null
-                                && ((r.intent.getFlags()
+                                || r.intent.getPackage() == null
+                                || ((r.intent.getFlags()
                                         & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0)
-                                && !isSignaturePerm(r.requiredPermissions))) {
+                                || !isSignaturePerm(r.requiredPermissions))) {
                             mService.addBackgroundCheckViolationLocked(r.intent.getAction(),
                                 component.getPackageName());
                             Slog.w(TAG, "Background execution not allowed: receiving "
                                 + r.intent + " to "
                                 + component.flattenToShortString());
                             skip = true;
+                        } else if( allowed == ActivityManager.APP_START_MODE_DELAYED ) {
+                            Slog.w(TAG, "Background execution delayed: receiving "
+                                + r.intent + " to "
+                                + component.flattenToShortString());
+                            skip = true;
                         }
                 }
             }
+
+            mService.isWhiteListedIntentNew(info.activityInfo.packageName,r.intent);
 
             if (skip) {
                 if (DEBUG_BROADCAST)  Slog.v(TAG_BROADCAST,

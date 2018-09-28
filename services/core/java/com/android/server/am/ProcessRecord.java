@@ -203,6 +203,8 @@ final class ProcessRecord {
     // App is allowed to manage whitelists such as temporary Power Save mode whitelist.
     boolean whitelistManager;
 
+    long startTime;
+
     void dump(PrintWriter pw, String prefix) {
         final long nowUptime = SystemClock.uptimeMillis();
 
@@ -445,7 +447,7 @@ final class ProcessRecord {
         curAdj = setAdj = verifiedAdj = ProcessList.INVALID_ADJ;
         persistent = false;
         removed = false;
-        lastStateTime = lastPssTime = nextPssTime = SystemClock.uptimeMillis();
+        startTime = lastStateTime = lastPssTime = nextPssTime = SystemClock.uptimeMillis();
     }
 
     public void setPid(int _pid) {
