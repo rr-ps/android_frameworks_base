@@ -1192,6 +1192,14 @@ class AlarmManagerService extends SystemService {
 	        if( callingPackage != null && callingPackage.equals("com.google.android.deskclock") ) {
 		        blockAlarm = false;
 	        } else if( blockTag.contains("com.android.internal.telephony.data") ||
+                blockTag.startsWith("org.lineageos.lockclock:org.lineageos.lockclock/.weather.WeatherUpdateService") ||
+                blockTag.startsWith("org.lineageos.lockclock:org.lineageos.lockclock.action.FORCE_WEATHER_UPDATE") ||
+                blockTag.startsWith("android:lineageos.platform.intent.action.UPDATE_TWILIGHT_STATE") || 
+                blockTag.startsWith("com.google.android.wearable.app:com.google.android.clockwork.TIME_SYNC") || 
+                blockTag.startsWith("com.google.android.wearable.app:com.google.android.clockwork.TIME_ZONE_SYNC") || 
+                blockTag.startsWith("com.google.android.wearable.app:com.google.android.clockwork.calendar.action.REFRESH") ||
+                blockTag.startsWith("android:com.android.server.NetworkTimeUpdateService.action.POLL") ||
+                blockTag.startsWith("android:GraphicsStatsService") || 
                 blockTag.contains("NETWORK_LINGER_COMPLETE") ||
 		        blockTag.contains("*sync") ||
 		        blockTag.contains("*job") || 
@@ -1200,6 +1208,9 @@ class AlarmManagerService extends SystemService {
 	        } else if( blockTag.equals("android:WifiConnectivityManager Restart Scan") ) {
 	   	        blockAlarm = true;
 	        } else if( callingPackage != null && callingPackage.startsWith("com.google.android.gms") ) {
+		        blockAlarm = true;
+            } else if(blockTag.startsWith("com.qualcomm.qti.biometrics.fingerprint") && 
+                SystemProperties.get("persist.pm.qfp_alarm", "0").equals("1") ) {
 		        blockAlarm = true;
 	        } else {
 
@@ -1229,7 +1240,9 @@ class AlarmManagerService extends SystemService {
                 } else if( type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) {
                     type = AlarmManager.ELAPSED_REALTIME;
                 }
-	        }
+	        } else {
+                Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag + " " + callingUid + "/" + callingPackage);
+            }
 
         }
 
