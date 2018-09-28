@@ -2887,17 +2887,23 @@ public final class PowerManagerService extends SystemService
             mWakeLockSuspendBlocker.release();
             mHoldingWakeLockSuspendBlocker = false;
             if( !needDisplaySuspendBlocker ) {
-                SystemProperties.set("pm.power_profile","9");
+                try{
+                    SystemProperties.set("pm.power_profile","9");
+                } catch (Exception e) {}
             }
         }
         if (!needDisplaySuspendBlocker && mHoldingDisplaySuspendBlocker) {
             mDisplaySuspendBlocker.release();
             mHoldingDisplaySuspendBlocker = false;
-            if( needWakeLockSuspendBlocker ) {
-                SystemProperties.set("pm.power_profile","0");
-            } else {
-                SystemProperties.set("pm.power_profile","9");
+            try {
+                if( needWakeLockSuspendBlocker ) {
+                    SystemProperties.set("pm.power_profile","0");
+                } else {
+                    SystemProperties.set("pm.power_profile","9");
+                }
+            } catch(Exception e) {
             }
+
         }
 
         // Enable auto-suspend if needed.
