@@ -16,7 +16,6 @@ LOCAL_SRC_FILES += \
     $(LOCAL_REL_DIR)/com_android_server_am_BatteryStatsService.cpp \
     $(LOCAL_REL_DIR)/com_android_server_connectivity_Vpn.cpp \
     $(LOCAL_REL_DIR)/com_android_server_connectivity_tethering_OffloadHardwareInterface.cpp \
-    $(LOCAL_REL_DIR)/com_android_server_ConsumerIrService.cpp \
     $(LOCAL_REL_DIR)/com_android_server_HardwarePropertiesManagerService.cpp \
     $(LOCAL_REL_DIR)/com_android_server_hdmi_HdmiCecController.cpp \
     $(LOCAL_REL_DIR)/com_android_server_input_InputApplicationHandle.cpp \
