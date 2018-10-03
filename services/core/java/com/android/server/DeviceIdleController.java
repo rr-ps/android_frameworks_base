@@ -1939,14 +1939,14 @@ public class DeviceIdleController extends SystemService
                     mConstants.IDLE_AFTER_INACTIVE_TIMEOUT = 30 * 60 * 1000L;
                     mConstants.IDLE_PENDING_TIMEOUT = 5 * 60 * 1000L;
                     mConstants.MAX_IDLE_PENDING_TIMEOUT = 10 * 60 * 1000L;
-                    mConstants.MIN_TIME_TO_ALARM = 60 * 60 * 1000L;
+                    mConstants.MIN_TIME_TO_ALARM = 1 * 1000L;
                     mConstants.MAX_TEMP_APP_WHITELIST_DURATION = 5 * 60 * 1000L;
                     mConstants.MMS_TEMP_APP_WHITELIST_DURATION = 60 * 1000L;
                     mConstants.SMS_TEMP_APP_WHITELIST_DURATION = 20 * 1000L;
                     mConstants.NOTIFICATION_WHITELIST_DURATION = 30 * 1000L;
 
 		        } else {
-                    mConstants.INACTIVE_TIMEOUT = 500L;
+                    mConstants.INACTIVE_TIMEOUT = 60 * 1000L;
                     mConstants.SENSING_TIMEOUT = 0L;
                     mConstants.LOCATING_TIMEOUT = 0L;
                     mConstants.LOCATION_ACCURACY = 100;
