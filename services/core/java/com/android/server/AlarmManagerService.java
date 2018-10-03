@@ -115,7 +115,7 @@ class AlarmManagerService extends SystemService {
             = new Intent().addFlags(Intent.FLAG_FROM_BACKGROUND);
     static final IncreasingTimeOrder sIncreasingTimeOrder = new IncreasingTimeOrder();
     
-    static final boolean WAKEUP_STATS = false;
+    static final boolean WAKEUP_STATS = true;
 
     private static final Intent NEXT_ALARM_CLOCK_CHANGED_INTENT =
             new Intent(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
@@ -1178,7 +1178,7 @@ class AlarmManagerService extends SystemService {
 
         boolean disablePowerSave = SystemProperties.get("persist.pm.idle_disable", "0").equals("1");
 
-        if (!disablePowerSave && operation != mTimeTickSender && alarmClock == null && 
+        if (!disablePowerSave && /*operation != mTimeTickSender && alarmClock == null && */
              ( type == AlarmManager.RTC_WAKEUP || type == AlarmManager.ELAPSED_REALTIME_WAKEUP ||
              ( flags&(AlarmManager.FLAG_ALLOW_WHILE_IDLE
                     | AlarmManager.FLAG_ALLOW_WHILE_IDLE_UNRESTRICTED
@@ -1229,11 +1229,12 @@ class AlarmManagerService extends SystemService {
 	        }
 
 	        if( blockAlarm ) {
-                if (localLOGV) Slog.v(TAG, "RTC Alarm: (blocked) " + type + " " + blockTag);
+                /*if (localLOGV)*/ Slog.v(TAG, "RTC Alarm: (blocked) " + type + " " + blockTag + " " + callingUid + "/" + callingPackage);
 
                 flags &= ~AlarmManager.FLAG_ALLOW_WHILE_IDLE;
                 flags &= ~AlarmManager.FLAG_ALLOW_WHILE_IDLE_UNRESTRICTED;
                 flags &= ~AlarmManager.FLAG_WAKE_FROM_IDLE;
+
 
                 if (type == AlarmManager.RTC_WAKEUP) {
                     type = AlarmManager.RTC;
@@ -1241,7 +1242,18 @@ class AlarmManagerService extends SystemService {
                     type = AlarmManager.ELAPSED_REALTIME;
                 }
 	        } else {
-                Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag + " " + callingUid + "/" + callingPackage);
+
+                long trigger = triggerElapsed;
+
+                if (type == AlarmManager.RTC_WAKEUP || type == AlarmManager.RTC ) {
+                    trigger = triggerAtTime - SystemClock.elapsedRealtime();
+                } else if( type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) {
+                }
+                long whenInterval = trigger; 
+                long alarmSecondsInterval = whenInterval / 1000;
+                long alarmNanosecondsInterval = (whenInterval % 1000) * 1000 * 1000;
+
+                /*if (localLOGV)*/ Slog.v(TAG, "RTC Alarm: " + type + " " + blockTag + " " + callingUid + "/" + callingPackage + " in " + alarmSecondsInterval + ":" + alarmNanosecondsInterval );
             }
 
         }
@@ -2222,6 +2234,12 @@ class AlarmManagerService extends SystemService {
     }
 
     private void setLocked(int type, long when) {
+        long whenInterval = when - SystemClock.elapsedRealtime();
+        long alarmSecondsInterval = whenInterval / 1000;
+        long alarmNanosecondsInterval = (whenInterval % 1000) * 1000 * 1000;
+
+        Slog.v(TAG, "Next wakeup alarm in " + alarmSecondsInterval + ":" + alarmNanosecondsInterval);
+
         if (mNativeData != 0) {
             // The kernel never triggers alarms with negative wakeup times
             // so we ensure they are positive.
@@ -2233,7 +2251,6 @@ class AlarmManagerService extends SystemService {
                 alarmSeconds = when / 1000;
                 alarmNanoseconds = (when % 1000) * 1000 * 1000;
             }
-            
             set(mNativeData, type, alarmSeconds, alarmNanoseconds);
         } else {
             Message msg = Message.obtain();
@@ -2487,6 +2504,8 @@ class AlarmManagerService extends SystemService {
             StringBuilder sb = new StringBuilder(128);
             sb.append("Alarm{");
             sb.append(Integer.toHexString(System.identityHashCode(this)));
+            sb.append(" tag ");
+            sb.append(statsTag);
             sb.append(" type ");
             sb.append(type);
             sb.append(" when ");
@@ -2549,6 +2568,7 @@ class AlarmManagerService extends SystemService {
     }
 
     long currentNonWakeupFuzzLocked(long nowELAPSED) {
+/*
         long timeSinceOn = nowELAPSED - mNonInteractiveStartTime;
         if (timeSinceOn < 5*60*1000) {
             // If the screen has been off for 5 minutes, only delay by at most two minutes.
@@ -2559,7 +2579,8 @@ class AlarmManagerService extends SystemService {
         } else {
             // Otherwise, we will delay by at most an hour.
             return 60*60*1000;
-        }
+        }*/
+        return 3*60*60*1000;
     }
 
     static int fuzzForDuration(long duration) {
@@ -2582,7 +2603,7 @@ class AlarmManagerService extends SystemService {
             return false;
         }
         if (mLastAlarmDeliveryTime <= 0) {
-            return false;
+            //return false;
         }
         if (mPendingNonWakeupAlarms.size() > 0 && mNextNonWakeupDeliveryTime < nowELAPSED) {
             // This is just a little paranoia, if somehow we have pending non-wakeup alarms
