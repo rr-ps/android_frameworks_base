@@ -614,9 +614,9 @@ public final class BroadcastQueue {
 
         if( r!=null && r.intent!=null ) {
             mService.updateScreenState(r.intent);
-        }
+        
 
-/*
+
             if (!skip && filter.receiverList.uid >= Process.FIRST_APPLICATION_UID) {
 
                 int allowed = ActivityManager.APP_START_MODE_NORMAL;
@@ -628,14 +628,15 @@ public final class BroadcastQueue {
                     ApplicationInfo ai = AppGlobals.getPackageManager().getApplicationInfo(filter.packageName, 0, 0);
                     targetSdkVersion = ai.targetSdkVersion;
                 } catch (Exception e) {
-                    Slog.e(TAG, "getAppStartModeLocked: Can't get appinfo: from=" + r.callerPackage + " receiving intent=" + r.intent);
+                    Slog.e(TAG, "getAppBlocked:(1) Can't get appinfo: from=" + r.callerPackage + " receiving intent=" + r.intent);
                 }    
 
                 allowed = mService.getAppStartModeLocked(
                         filter.receiverList.uid, filter.packageName,
-                        targetSdkVersion, r.callingPid, true, false);
+                        targetSdkVersion, r.callingPid, true, false, r.intent.toString() );
 
                 if( allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(filter.packageName,r.intent) ) {
+                    //Slog.e(TAG, "getAppBlocked:(1) allowed:" + r.callerPackage + " receiving intent=" + r.intent + " whitelisted by code");
                     allowed = ActivityManager.APP_START_MODE_NORMAL;
                 } 
 
@@ -648,7 +649,7 @@ public final class BroadcastQueue {
                     // to it and the app is in a state that should not receive it
                     // (depending on how getAppStartModeLocked has determined that).
                     if (allowed == ActivityManager.APP_START_MODE_DISABLED  || allowed == ActivityManager.APP_START_MODE_DELAYED ) {
-                        Slog.w(TAG, "Background execution disabled: receiving " + r.intent);
+                        Slog.w(TAG, "getAppBlocked:(1) Background execution disabled: receiving " + r.intent + " " + filter.receiverList.uid + "/" + filter.packageName);
                         skip = true;
                     } else if ( (r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0
                             || (r.intent.getComponent() == null
@@ -657,12 +658,12 @@ public final class BroadcastQueue {
                                         & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0)
                                 && !isSignaturePerm(r.requiredPermissions))) {
                         //mService.addBackgroundCheckViolationLocked(r.intent.getAction(),filter.packageName);
-                        Slog.w(TAG, "Background execution not allowed: receiving " + r.intent);
+                        Slog.w(TAG, "getAppBlocked:(1) Background execution not allowed: receiving " + r.intent + " " + filter.receiverList.uid + "/" + filter.packageName);
                         skip = true;
                     }
                 }
             }
-*/
+        }
 
         if (!mService.mIntentFirewall.checkBroadcast(r.intent, r.callingUid,
                 r.callingPid, r.resolvedType, filter.receiverList.uid)) {
@@ -1313,11 +1314,11 @@ public final class BroadcastQueue {
    
                 allowed = mService.getAppStartModeLocked(
                         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
-                        info.activityInfo.applicationInfo.targetSdkVersion, -3, true, false, r.intent.toString() );
+                        info.activityInfo.applicationInfo.targetSdkVersion, r.callingPid, true, false, r.intent.toString() );
 
                 if( ((allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) )  ) {
                     allowed = ActivityManager.APP_START_MODE_NORMAL;
-                    Slog.i(TAG, "getAppStartModeLocked: allowed " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName + ", allowed=MODE_NORMAL, " + r.intent.toString() + ", code whitelisted");    
+                    //Slog.i(TAG, "getAppBlocked: allowed " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName + ", allowed=MODE_NORMAL, " + r.intent.toString() + ", code whitelisted");    
                 }
 
 
@@ -1335,9 +1336,10 @@ public final class BroadcastQueue {
                         // to it and the app is in a state that should not receive it
                         // (depending on how getAppStartModeLocked has determined that).
                         if (allowed == ActivityManager.APP_START_MODE_DISABLED) {
-                            Slog.w(TAG, "Background execution disabled: receiving "
+                            Slog.w(TAG, "getAppBlocked: Background execution disabled: receiving "
                                 + r.intent + " to "
-                                + component.flattenToShortString());
+                                + component.flattenToShortString()
+                                + " " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName );
                             skip = true;
                         } else if (((r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0)
                             || (r.intent.getComponent() == null
@@ -1347,14 +1349,16 @@ public final class BroadcastQueue {
                                 || !isSignaturePerm(r.requiredPermissions))) {
                             mService.addBackgroundCheckViolationLocked(r.intent.getAction(),
                                 component.getPackageName());
-                            Slog.w(TAG, "Background execution not allowed: receiving "
+                            Slog.w(TAG, "getAppBlocked: Background execution not allowed: receiving "
                                 + r.intent + " to "
-                                + component.flattenToShortString());
+                                + component.flattenToShortString()
+                                + " " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName);
                             skip = true;
                         } else if( allowed == ActivityManager.APP_START_MODE_DELAYED ) {
-                            Slog.w(TAG, "Background execution delayed: receiving "
+                            Slog.w(TAG, "getAppBlocked: Background execution delayed: receiving "
                                 + r.intent + " to "
-                                + component.flattenToShortString());
+                                + component.flattenToShortString()
+                                + " " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName);
                             skip = true;
                         }
                 }
@@ -1363,8 +1367,8 @@ public final class BroadcastQueue {
             mService.isWhiteListedIntentNew(info.activityInfo.packageName,r.intent);
 
             if (skip) {
-                if (DEBUG_BROADCAST)  Slog.v(TAG_BROADCAST,
-                        "Skipping delivery of ordered [" + mQueueName + "] "
+                /*if (DEBUG_BROADCAST)*/  Slog.v(TAG_BROADCAST,
+                        "getAppBlocked: Skipping delivery of ordered [" + mQueueName + "] "
                         + r + " for whatever reason");
                 r.delivery[recIdx] = BroadcastRecord.DELIVERY_SKIPPED;
                 r.receiver = null;

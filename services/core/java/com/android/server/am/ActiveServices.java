@@ -364,7 +364,7 @@ public final class ActiveServices {
 
         // If this isn't a direct-to-foreground start, check our ability to kick off an
         // arbitrary service
-        if (true || !r.startRequested && !fgRequired) {
+        if (/*true || !r.startRequested &&*/ !fgRequired) {
             // Before going further -- if this app is not allowed to start services in the
             // background, then at this point we aren't going to let it period.
             int allowed = mAm.getAppStartModeLocked(r.appInfo.uid, r.packageName,
@@ -373,15 +373,16 @@ public final class ActiveServices {
             if (allowed == ActivityManager.APP_START_MODE_DELAYED) {
                 if( mAm.isWhiteListedService(r.name.getPackageName(),r.name.getClassName()) ) {
                     allowed = ActivityManager.APP_START_MODE_NORMAL;
-                    Slog.i(TAG, "getAppStartModeLocked: allowed " + r.appInfo.uid + "/" + r.name.getPackageName() + ", allowed=MODE_NORMAL, " + r.toString() + ", code whitelisted");    
+                    //Slog.i(TAG, "getAppBlocked: allowed " + r.appInfo.uid + "/" + r.name.getPackageName() + ", allowed=MODE_NORMAL, " + r.toString() + ", code whitelisted");    
                 }
             }
 
             if (allowed != ActivityManager.APP_START_MODE_NORMAL) {
-                Slog.w(TAG, "Background start not allowed: service "
+                Slog.w(TAG, "getAppBlocked: Background start not allowed: service "
                         + service + " to " + r.name.flattenToShortString()
                         + " from pid=" + callingPid + " uid=" + callingUid
                         + " pkg=" + callingPackage);
+                r.stopIfKilled = true;
                 if (allowed == ActivityManager.APP_START_MODE_DELAYED) {
                     // In this case we are silently disabling the app, to disrupt as
                     // little as possible existing apps.
@@ -634,7 +635,7 @@ public final class ActiveServices {
                         if ( allowed  != ActivityManager.APP_START_MODE_NORMAL) {
 
                         if( mAm.isWhiteListedService(service.packageName,service.name.getClassName()) ) {
-                            Slog.i(TAG, "getAppStartModeLocked: allowed " + service.appInfo.uid + "/" + service.packageName + ", allowed=APP_START_MODE_NORMAL, " + service.name.getClassName() + ", code whitelisted");    
+                            //Slog.i(TAG, "getAppStartBlocked: allowed " + service.appInfo.uid + "/" + service.packageName + ", allowed=APP_START_MODE_NORMAL, " + service.name.getClassName() + ", code whitelisted");    
                             continue;
                         }
 
@@ -644,7 +645,7 @@ public final class ActiveServices {
                         String compName = service.name.flattenToShortString();
                         EventLogTags.writeAmStopIdleService(service.appInfo.uid, compName);
                         StringBuilder sb = new StringBuilder(64);
-                        sb.append("Stopping service due to app idle: ");
+                        sb.append("getAppStartBlocked: Stopping service due to app idle: ");
                         UserHandle.formatUid(sb, service.appInfo.uid);
                         sb.append(" ");
                         TimeUtils.formatDuration(service.createTime
@@ -661,6 +662,7 @@ public final class ActiveServices {
                     ServiceRecord service = stopping.get(i);
                     service.delayed = false;
                     services.ensureNotStartingBackgroundLocked(service);
+                    service.stopIfKilled = true;
                     stopServiceLocked(service);
                 }
             }
@@ -3366,15 +3368,17 @@ public final class ActiveServices {
             }
             if (timeout != null && mAm.mLruProcesses.contains(proc)) {
                 Slog.w(TAG, "Timeout executing service: " + timeout);
-                StringWriter sw = new StringWriter();
-                PrintWriter pw = new FastPrintWriter(sw, false, 1024);
-                pw.println(timeout);
-                timeout.dump(pw, "    ");
-                pw.close();
-                mLastAnrDump = sw.toString();
-                mAm.mHandler.removeCallbacks(mLastAnrDumpClearer);
-                mAm.mHandler.postDelayed(mLastAnrDumpClearer, LAST_ANR_LIFETIME_DURATION_MSECS);
-                anrMessage = "executing service " + timeout.shortName;
+                if( !timeout.stopIfKilled ) {
+                    StringWriter sw = new StringWriter();
+                    PrintWriter pw = new FastPrintWriter(sw, false, 1024);
+                    pw.println(timeout);
+                    timeout.dump(pw, "    ");
+                    pw.close();
+                    mLastAnrDump = sw.toString();
+                    mAm.mHandler.removeCallbacks(mLastAnrDumpClearer);
+                    mAm.mHandler.postDelayed(mLastAnrDumpClearer, LAST_ANR_LIFETIME_DURATION_MSECS);
+                    anrMessage = "executing service " + timeout.shortName;
+                }
             } else {
                 Message msg = mAm.mHandler.obtainMessage(
                         ActivityManagerService.SERVICE_TIMEOUT_MSG);

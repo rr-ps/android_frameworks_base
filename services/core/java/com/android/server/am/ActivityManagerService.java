@@ -8722,16 +8722,16 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     void logGetAppStartModeLocked(int uid, String packageName, int packageTargetSdk, int allowed, String logMsg, String message) {
         //if (!DEBUG_BACKGROUND_CHECK) {
-            String allowedStr = "MODE_NORMAL";
+            String allowedStr = "NORMAL";
 
-            if( allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) allowedStr = "MODE_DELAYED_RIGID";
-            else if( allowed == ActivityManager.APP_START_MODE_DELAYED ) allowedStr = "MODE_DELAYED";
+            if( allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) allowedStr = "DELAYED_RIGID";
+            else if( allowed == ActivityManager.APP_START_MODE_DELAYED ) allowedStr = "DELAYED";
             else if( allowed == ActivityManager.APP_START_MODE_DISABLED ) allowedStr = "DISABLED";
-
+            
             if (packageTargetSdk >= Build.VERSION_CODES.O) {
-                Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
+                //Slog.i(TAG, "getAppStartModeLocked: allowed, O+ " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
             } else  {
-                Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
+                //Slog.i(TAG, "getAppStartModeLocked: allowed, N- " + uid + "/" + packageName + ", allowed=" + allowedStr + " " + logMsg + " " + message);
             }
         //}
     }
@@ -8878,7 +8878,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         if( !disabledOnly ) {
 
-        /*if (DEBUG_BACKGROUND_CHECK)*/ Slog.d(TAG, "checkAllowBackground: uid=" + uid + " pkg="
+        if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG, "checkAllowBackground: uid=" + uid + " pkg="
                 + packageName + " rec=" + uidRec + " always=" + alwaysRestrict + " idle="
                 + (uidRec != null ? uidRec.idle : false) + " msg=" + logMsg);
 
@@ -8888,6 +8888,7 @@ public class ActivityManagerService extends IActivityManager.Stub
             logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"booting up; not restricted");
             return ActivityManager.APP_START_MODE_NORMAL;
         }
+
         if(mOnBattery) {
 
 
@@ -8929,36 +8930,79 @@ public class ActivityManagerService extends IActivityManager.Stub
                         + " onwhitelist=" + isOnDeviceIdleWhitelistLocked(uid));
                 if (startMode != ActivityManager.APP_START_MODE_NORMAL) {
 
-                    if( PowerManagerService.getGmsUid() != uid ||
-                        (mScreenOn && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") )  ) {
 
                     if (callingPid >= 0) {
                         ProcessRecord proc;
                         synchronized (mPidsSelfLocked) {
                             proc = mPidsSelfLocked.get(callingPid);
                         }
+
+                        if( proc != null ) {
+
+
+                            int appop = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                                    proc.uid, proc.info.packageName);
+
+                            //int appop_wl = mAppOpsService.noteOperation(AppOpsManager.OP_WAKE_LOCK,
+                            //        uid, packageName);
+
+
+                            if (uidOnBackgroundWhitelist(proc.uid)) {
+                                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller on background whitelist; not restricted");
+                                return ActivityManager.APP_START_MODE_NORMAL;
+                            }
+
+                            // Is this app on the battery whitelist?
+                            if (isOnDeviceIdleWhitelistLocked(proc.uid)) {
+                                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller on idle whitelist; not restricted");
+                                return ActivityManager.APP_START_MODE_NORMAL;
+                            }
+                        
+
+
+                            if( PowerManagerService.getGmsUid() == proc.uid &&
+                                (mScreenOn && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") )  ) {
+                                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller is GMS foreground; not restricted, proc=" + proc + " procState=" + proc.curProcState);
+                                return ActivityManager.APP_START_MODE_NORMAL;
+                            }
+
     
-                        final ActivityRecord TOP_ACT = resumedAppLocked();
-                        final ProcessRecord TOP_APP = TOP_ACT != null ? TOP_ACT.app : null;
-                        if( proc == TOP_APP ) {
-//                        if ( proc != null &&
-//                                !ActivityManager.isProcStateBackground(proc.curProcState) ) {
-                            // Whoever is instigating this is in the foreground, so we will allow it
-                            // to go through.
-                            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"foreground app; not restricted, proc=" + proc + " procState=" + proc.curProcState);
-                            return ActivityManager.APP_START_MODE_NORMAL;
-                        } 
+                            final ActivityRecord TOP_ACT = resumedAppLocked();
+                            final ProcessRecord TOP_APP = TOP_ACT != null ? TOP_ACT.app : null;
+                            if( proc == TOP_APP || proc == mHomeProcess || 
+                                (proc != null && 
+                                ( proc.curProcState == 1 ||
+                                  proc.curProcState == 2 ||
+                                  (appop != AppOpsManager.MODE_IGNORED && proc.curProcState <= 5)) ) ) {
+                                // Whoever is instigating this is in the foreground, so we will allow it
+                                // to go through.
+                                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller is a foreground app; not restricted, proc=" + proc + " procState=" + proc.curProcState);
+                                return ActivityManager.APP_START_MODE_NORMAL;
+                            } 
+                        }
                     }
 
-                    if( startMode != ActivityManager.APP_START_MODE_NORMAL && ( uidRec != null && 
-                        !ActivityManager.isProcStateBackground(uidRec.curProcState) ) ) {
-                        // Whoever is instigating this is in the foreground, so we will allow it
-                        // to go through.
-                        logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"foreground app; not restricted, uidRec=" + uidRec + " procState=" + uidRec.curProcState);
-                        return ActivityManager.APP_START_MODE_NORMAL;
-                    }
- 
-                    }
+/*
+                    if( PowerManagerService.getGmsUid() == uid &&
+                        (mScreenOn && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") )  ) {
+
+                        if( startMode != ActivityManager.APP_START_MODE_NORMAL && 
+                            ( uidRec != null && 
+                                ( uidRec.curProcState == 1 ||
+                                uidRec.curProcState == 2 ||
+                                uidRec.curProcState <= 5) ) 
+                            ) {
+                            // Whoever is instigating this is in the foreground, so we will allow it
+                            // to go through.
+                            logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"foreground app; not restricted, uidRec=" + uidRec + " procState=" + uidRec.curProcState);
+                            return ActivityManager.APP_START_MODE_NORMAL;
+                        }
+
+                    }*/
+//                        if ( proc != null &&
+//                          !ActivityManager.isProcStateBackground(proc.curProcState) ) {
+//                          !ActivityManager.isProcStateBackground(uidRec.curProcState) 
+
                 }
                 return startMode;
             }
@@ -9207,7 +9251,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     		        if( cls.equals("com.google.android.gms.tapandpay.service.TapAndPayService") ) return true;
     		        if( cls.equals("com.google.android.gms.plus.service.DefaultIntentService") ) return true;
     		        if( cls.equals("com.google.android.gms.chimera.GmsApiService") ) return true;
-                    if( cls.startsWith("com.google.android.finsky.verifier.impl.Package") ) return true;
+                    if( cls.startsWith("com.google.android.finsky.verifier.impl") ) return true;
                 }
         }
 
