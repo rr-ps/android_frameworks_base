@@ -79,6 +79,7 @@ import android.util.TimeUtils;
 import android.util.proto.ProtoOutputStream;
 import android.view.Display;
 import android.view.WindowManagerPolicy;
+import android.telephony.TelephonyManager;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.IAppOpsService;
 import com.android.internal.app.IBatteryStats;
@@ -2967,6 +2968,23 @@ public final class PowerManagerService extends SystemService
         }
     }
 
+
+    private void updateDeviceIdleStateLocked(boolean idle) {
+        if( SystemProperties.get("persist.pm.idle_2g", "0").equals("1") ) {
+                Thread thread = new Thread()
+                {
+                    @Override
+                    public void run() {
+                        TelephonyManager tm = (TelephonyManager) mContext
+                            .getSystemService(Context.TELEPHONY_SERVICE);
+                        Log.d(TAG, "2G = " + idle);
+                        tm.toggle2G(idle);
+                    }
+                };
+                thread.start();
+        }
+    }
+
     private boolean isInteractiveInternal() {
         synchronized (mLock) {
             return PowerManagerInternal.isInteractive(mWakefulness);
@@ -3115,6 +3133,7 @@ public final class PowerManagerService extends SystemService
                 return false;
             }
             mDeviceIdleMode = enabled;
+            updateDeviceIdleStateLocked(mDeviceIdleMode);
             updateWakeLockDisabledStatesLocked();
         }
         if (enabled) {
@@ -3399,13 +3418,13 @@ wakeLock.mTag.startsWith("SyncMgr") ||
         }
 
         if( mDeviceIdleMode && ( appid == gmsUid || fappid == gmsUid )  && !disabled ) {
-	        Slog.i(TAG, "getAppStartModeLocked: GMS wakelock while idle! " + wakeLock);
+	        Slog.i(TAG, "GMS wakelock while idle! " + wakeLock);
         }
 
         if (wakeLock.mDisabled != disabled) {
             wakeLock.mDisabled = disabled;
             if( disabled && ( appid <= Process.FIRST_APPLICATION_UID || appid == gmsUid || fappid <= Process.FIRST_APPLICATION_UID || fappid == gmsUid ) || !mDisplayPowerRequest.isBrightOrDim()  )  {
-	            Slog.i(TAG, "getAppStartModeLocked: SYS or GMS or IDLE wakelock disabled! " + wakeLock);
+	            Slog.i(TAG, "SYS or GMS or IDLE wakelock disabled! " + wakeLock);
             }
             return true;
         }
