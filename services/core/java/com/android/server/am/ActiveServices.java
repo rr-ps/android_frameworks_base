@@ -367,7 +367,7 @@ public final class ActiveServices {
         if (/*true || !r.startRequested &&*/ !fgRequired) {
             // Before going further -- if this app is not allowed to start services in the
             // background, then at this point we aren't going to let it period.
-            int allowed = mAm.getAppStartModeLocked(r.appInfo.uid, r.packageName,
+            int allowed = mAm.getAppStartModeLocked(false, r.appInfo.uid, r.packageName,
                     r.appInfo.targetSdkVersion, callingPid, false, false, r.toString());
 
             if (allowed == ActivityManager.APP_START_MODE_DELAYED) {
@@ -630,8 +630,9 @@ public final class ActiveServices {
             for (int i=services.mServicesByName.size()-1; i>=0; i--) {
                 ServiceRecord service = services.mServicesByName.valueAt(i);
                 if (service.appInfo.uid == uid && service.startRequested) {
-                        int allowed = mAm.getAppStartModeLocked(service.appInfo.uid, service.packageName,
-                            service.appInfo.targetSdkVersion, -2, false, false, service.name.getClassName());
+                        int pid = service.app != null? service.app.pid : -2;
+                        int allowed = mAm.getAppStartModeLocked(false, service.appInfo.uid, service.packageName,
+                            service.appInfo.targetSdkVersion, pid , false, false, service.name.getClassName());
                         if ( allowed  != ActivityManager.APP_START_MODE_NORMAL) {
 
                         if( mAm.isWhiteListedService(service.packageName,service.name.getClassName()) ) {
@@ -663,7 +664,10 @@ public final class ActiveServices {
                     service.delayed = false;
                     services.ensureNotStartingBackgroundLocked(service);
                     service.stopIfKilled = true;
-                    stopServiceLocked(service);
+                    try {
+                        stopServiceLocked(service);
+                    } catch(Exception e) {
+                    }
                 }
             }
         }
