@@ -1381,6 +1381,11 @@ public class ActivityManagerService extends IActivityManager.Stub
      * For some direct access we need to power manager.
      */
     PowerManagerInternal mLocalPowerManager;
+    PowerManager mPowerManager;
+
+    boolean mDeviceIdleMode = false;
+    boolean mDeviceIdleModeTrigger = false;
+    long mDeviceIdleModeTime;
 
     /**
      * We want to hold a wake lock while running a voice interaction session, since
@@ -2995,8 +3000,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         mStackSupervisor.initPowerManagement();
         mBatteryStatsService.initPowerManagement();
         mLocalPowerManager = LocalServices.getService(PowerManagerInternal.class);
-        PowerManager pm = (PowerManager)mContext.getSystemService(Context.POWER_SERVICE);
-        mVoiceWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "*voice*");
+        mPowerManager = (PowerManager)mContext.getSystemService(Context.POWER_SERVICE);
+        mVoiceWakeLock = mPowerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "*voice*");
         mVoiceWakeLock.setReferenceCounted(false);
     }
 
@@ -7503,6 +7508,23 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
         }, pkgFilter);
 
+        IntentFilter idleFilter = new IntentFilter();
+	    idleFilter.addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED);
+        mContext.registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+	    	    mDeviceIdleMode = mPowerManager.isDeviceIdleMode();
+                if( mDeviceIdleMode ) { 
+                    mDeviceIdleModeTrigger = true;
+                    mDeviceIdleModeTime = SystemClock.elapsedRealtime();
+                    synchronized (ActivityManagerService.this) {
+                        updateOomAdjLocked();
+                    }
+                    Slog.v(TAG_SERVICE, "DeviceIdleMode changed :" + mDeviceIdleMode);
+                }
+		    }
+        }, idleFilter);
+
         IntentFilter dumpheapFilter = new IntentFilter();
         dumpheapFilter.addAction(DumpHeapActivity.ACTION_DELETE_DUMPHEAP);
         mContext.registerReceiver(new BroadcastReceiver() {
@@ -8715,7 +8737,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     public boolean isAppStartModeDisabled(int uid, String packageName) {
         synchronized (this) {
-            return getAppStartModeLocked(uid, packageName, 0, -1, false, true, "")
+            return getAppStartModeLocked(false, uid, packageName, 0, -1, false, true, "")
                     == ActivityManager.APP_START_MODE_DISABLED;
         }
     }
@@ -8777,7 +8799,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         */
 
     
-        if( !mScreenOn && appop == AppOpsManager.MODE_IGNORED && appop_wl == AppOpsManager.MODE_IGNORED ) {
+        if( mDeviceIdleMode && appop == AppOpsManager.MODE_IGNORED && appop_wl == AppOpsManager.MODE_IGNORED ) {
             logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED,logMsg," disabled by both preferences");
             return ActivityManager.APP_START_MODE_DELAYED;
         }
@@ -8785,19 +8807,25 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         // Apps that target O+ are always subject to background check
         if (packageTargetSdk >= Build.VERSION_CODES.O) {
-            if( idle && !persistent ) {
+            if( idle && !persistent && uid >= Process.FIRST_APPLICATION_UID ) {
                 logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, restricted");
                 return ActivityManager.APP_START_MODE_DELAYED_RIGID;
+            }
+
+            if( appop_wl == AppOpsManager.MODE_IGNORED ) {
+                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, disabled by appops");
+                return ActivityManager.APP_START_MODE_DELAYED;
             }
 
             if( appop == AppOpsManager.MODE_IGNORED ) {
                 logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, disabled by appops");
                 return ActivityManager.APP_START_MODE_DELAYED_RIGID;
             }
+
         }
 
 
-        if( uid >= Process.FIRST_APPLICATION_UID && ( disabledByDefault || (disabledWhileScreenOff&&!mScreenOn) ) ) {
+        if( uid >= Process.FIRST_APPLICATION_UID && ( disabledByDefault || (disabledWhileScreenOff&&mDeviceIdleMode) ) ) {
             if( packageTargetSdk >= Build.VERSION_CODES.O ) {   
                 logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_DELAYED_RIGID,logMsg," targets O+, restricted by global preference");
                 return ActivityManager.APP_START_MODE_DELAYED_RIGID;
@@ -8864,14 +8892,14 @@ public class ActivityManagerService extends IActivityManager.Stub
         return appRestrictedInBackgroundLocked(uid, packageName, packageTargetSdk, idle, logMsg);
     }
 
-    int getAppStartModeLocked(int uid, String packageName, int packageTargetSdk,
+    int getAppStartModeLocked(boolean enableFgs,int uid, String packageName, int packageTargetSdk,
             int callingPid, boolean alwaysRestrict, boolean disabledOnly, String logMsg) {
 
-        int allowed = getAppStartModeLockedInternal(uid, packageName, packageTargetSdk, callingPid, alwaysRestrict, disabledOnly, logMsg);
+        int allowed = getAppStartModeLockedInternal(enableFgs, uid, packageName, packageTargetSdk, callingPid, alwaysRestrict, disabledOnly, logMsg);
         return allowed;
     }
 
-    int getAppStartModeLockedInternal(int uid, String packageName, int packageTargetSdk,
+    int getAppStartModeLockedInternal(boolean enableFgs, int uid, String packageName, int packageTargetSdk,
             int callingPid, boolean alwaysRestrict, boolean disabledOnly, String logMsg) {
         UidRecord uidRec = mActiveUids.get(uid);
 
@@ -8893,7 +8921,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
 
             boolean disablePowerSave = SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
-                                   ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && mScreenOn ); 
+                                   ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && !mDeviceIdleMode ); 
 
             if( disablePowerSave ) {
                 logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"powersave disabled; not restricted");
@@ -8931,6 +8959,15 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if (startMode != ActivityManager.APP_START_MODE_NORMAL) {
 
 
+                    final ActivityRecord TOP_ACT = resumedAppLocked();
+                    final ProcessRecord TOP_APP = TOP_ACT != null ? TOP_ACT.app : null;
+
+                    if( TOP_APP != null && uid == TOP_APP.uid ) {
+                        logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"top app; not restricted");
+                        return ActivityManager.APP_START_MODE_NORMAL;
+                    }
+
+
                     if (callingPid >= 0) {
                         ProcessRecord proc;
                         synchronized (mPidsSelfLocked) {
@@ -8957,23 +8994,20 @@ public class ActivityManagerService extends IActivityManager.Stub
                                 logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller on idle whitelist; not restricted");
                                 return ActivityManager.APP_START_MODE_NORMAL;
                             }
-                        
 
-
-                            if( PowerManagerService.getGmsUid() == proc.uid &&
-                                (mScreenOn && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") )  ) {
-                                logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller is GMS foreground; not restricted, proc=" + proc + " procState=" + proc.curProcState);
-                                return ActivityManager.APP_START_MODE_NORMAL;
+                            if( PowerManagerService.getGmsUid() == proc.uid ) {
+                                if (!mDeviceIdleMode && SystemProperties.get("persist.pm.gms_enable_so", "0").equals("1") )   {
+                                    logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller is GMS foreground; not restricted, proc=" + proc + " procState=" + proc.curProcState);
+                                    return ActivityManager.APP_START_MODE_NORMAL;
+                                }
+                                enableFgs = false;
                             }
-
     
-                            final ActivityRecord TOP_ACT = resumedAppLocked();
-                            final ProcessRecord TOP_APP = TOP_ACT != null ? TOP_ACT.app : null;
                             if( proc == TOP_APP || proc == mHomeProcess || 
                                 (proc != null && 
                                 ( proc.curProcState == 1 ||
                                   proc.curProcState == 2 ||
-                                  (appop != AppOpsManager.MODE_IGNORED && proc.curProcState <= 5)) ) ) {
+                                  ((appop != AppOpsManager.MODE_IGNORED || enableFgs) && proc.curProcState <= 5)) ) ) {
                                 // Whoever is instigating this is in the foreground, so we will allow it
                                 // to go through.
                                 logGetAppStartModeLocked(uid,packageName,packageTargetSdk,ActivityManager.APP_START_MODE_NORMAL,logMsg,"caller is a foreground app; not restricted, proc=" + proc + " procState=" + proc.curProcState);
@@ -9158,13 +9192,13 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
 
 
-            if( mScreenOn || SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) ) {
+            if( !mDeviceIdleMode || SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) ) {
                 if( act.startsWith("com.qualcomm.location") ) return true;
                 if( act.startsWith("com.android.location") ) return true;
                 if( act.startsWith("com.google.android.location") ) return true;
             }
 
-            if( mScreenOn ) {
+            if( !mDeviceIdleMode ) {
                 if( act.startsWith("android.intent.action.DOWNLOAD") ) return true;
                 if( act.startsWith("android.intent.action.PACKAGE") ) return true;
                 if( act.startsWith("android.intent.action.INTENT_FILTER") ) return true;
@@ -9193,41 +9227,38 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     boolean isWhiteListedService(String packageName,String cls) {
 
-        if (DEBUG_BACKGROUND_CHECK) Slog.d(TAG,"Background execution check: Service packageName=" + packageName + ", cls=" + cls);
+        /*if (DEBUG_BACKGROUND_CHECK)*/ Slog.d(TAG,"Background execution check: Service packageName=" + packageName + ", cls=" + cls);
 
 	    //if( packageName == null ) return true;
         if( cls != null ) {
                 //if( cls.contains("wear") ) return true;
                 //if( cls.contains("Wear") ) return true;
                 if( cls.startsWith("com.android.") ) return true;
+		        if( cls.startsWith("com.google.android.gms.chimera") ) return true;
 		        if( cls.startsWith("com.google.android.gms.auth") ) return true;
 		        if( cls.startsWith("com.google.android.gms.gcm") ) return true;
+		        if( cls.startsWith("com.google.android.gms.beacon") ) return true;
+		        if( cls.startsWith("com.google.firebase") ) return true;
+		        if( cls.startsWith("com.google.android.gms.update") ) return true;
+
+
+		        if( cls.startsWith("com.google.android.gms.wearable") ) return true;
+		        if( cls.startsWith("com.google.android.gms.wallet") ) return true;
+		        if( cls.startsWith("com.google.android.gms.udc") ) return true;
+		        if( cls.startsWith("com.google.android.gms.thunderbird") ) return true;
 		        if( cls.startsWith("com.google.android.gms.tapandpay") ) return true;
+		        if( cls.startsWith("com.google.android.gms.security") ) return true;
+		        if( cls.startsWith("com.google.android.gms.matchstick") ) return true;
+		        if( cls.startsWith("com.google.android.gms.notifications") ) return true;
+		        if( cls.startsWith("com.google.android.gms.phenotype") ) return true;
+		        if( cls.startsWith("com.google.android.gms.reminders") ) return true;
 
-
-                if( cls.equals("com.google.android.gms.update.SystemUpdateService") ) return true;
-                if( cls.equals("com.google.android.gms.udc.service.UdcContextInitService") ) return true;
-
-		        if( cls.equals("com.google.android.gms.thunderbird.OutgoingSmsListenerService") ) return true;
 		        if( cls.equals("com.google.android.gms.pseudonymous.service.PseudonymousIdService") ) return true;
-		        if( cls.equals("com.google.android.gms.phenotype.service.PhenotypeService") ) return true;
 		        if( cls.equals("com.google.android.contextmanager.service.ContextManagerService") ) return true;
-		        if( cls.equals("com.google.android.gms.wearable.service.WearableService") ) return true;
 
-		        if( cls.equals("com.google.android.gms.chimera.GmsBoundBrokerService") ) return true;
-		        if( cls.equals("com.google.android.gms.chimera.PersistentBoundBrokerService") ) return true;
-		        if( cls.equals("com.google.android.gms.chimera.PersistentIntentOperationService") ) return true;
-		        if( cls.equals("com.google.android.gms.chimera.PersistentApiService") ) return true;
-		        if( cls.equals("com.google.android.gms.chimera.GmsIntentOperationService") ) return true;
-
-
-
-
-                if( cls.contains("SafetyNetClientService") ) return true;
         		if( cls.startsWith("com.google.android.gms.config.ConfigService") ) return true;
         		if( cls.startsWith("com.google.android.gms.deviceconnection") ) return true;
         		if( cls.startsWith("com.google.android.gms.lockbox") ) return true;
-        		if( cls.startsWith("com.google.android.gms.security.snet") ) return true;
         		if( cls.startsWith("com.google.android.gms.droidguard") ) return true;
         		if( cls.startsWith("com.google.android.gms.trustagent") ) return true;
 
@@ -9235,23 +9266,46 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if( cls.contains(".trustagent") ) return true;
                 if( cls.contains(".trustlet") ) return true;
                 if( cls.contains(".droidguard") ) return true;
+                if( cls.contains("SafetyNetClientService") ) return true;
 
-                if( mScreenOn || SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
+
+
+		        //if( cls.equals("com.google.android.gms.thunderbird.OutgoingSmsListenerService") ) return true;
+		        //if( cls.equals("com.google.android.gms.phenotype.service.PhenotypeService") ) return true;
+		        //if( cls.equals("com.google.android.gms.wearable.service.WearableService") ) return true;
+
+		        //if( cls.equals("com.google.android.gms.chimera.GmsBoundBrokerService") ) return true;
+		        //if( cls.equals("com.google.android.gms.chimera.PersistentBoundBrokerService") ) return true;
+		        //if( cls.equals("com.google.android.gms.chimera.PersistentIntentOperationService") ) return true;
+		        //if( cls.equals("com.google.android.gms.chimera.PersistentApiService") ) return true;
+		        //if( cls.equals("com.google.android.gms.chimera.PersistentDirectBootAwareApiService") ) return true;
+		        //if( cls.equals("com.google.android.gms.chimera.GmsIntentOperationService") ) return true;
+
+        		if( cls.startsWith("com.google.android.location.geocode") ) return false;
+        		if( cls.startsWith("com.google.android.location.geofencer") ) return false;
+        		if( cls.startsWith("com.google.android.location.reporting") ) return false;
+        		if( cls.startsWith("com.google.android.location.places") ) return false;
+        		if( cls.startsWith("com.google.location.nearby") ) return false;
+        		if( cls.startsWith("com.google.android.gms.locationsharing") ) return false;
+        		if( cls.startsWith("com.google.android.gms.nearby") ) return false;
+
+                if( !mDeviceIdleMode || SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) )  {
                     if( cls.startsWith("com.qualcomm.location") ) return true;
                     if( cls.startsWith("com.android.location") ) return true;
                     if( cls.startsWith("com.google.android.location") ) return true;
+                    if( cls.startsWith("com.google.location") ) return true;
                 }
 
-                if( mScreenOn ) {
-    		        if( cls.equals("com.google.android.gms.googlehelp.service.GoogleHelpService") ) return true;
+                if( !mDeviceIdleMode ) {
+    		        if( cls.startsWith("com.google.android.gms.googlehelp.service") ) return true;
 	    	        if( cls.equals("com.google.android.gms.chimera.UiIntentOperationService") ) return true;
-		            if( cls.equals("com.google.android.gms.photos.autobackup.AutoBackupWorkService") ) return true;
+		            if( cls.startsWith("com.google.android.gms.photos") ) return true;
     		        if( cls.equals("com.google.android.gms.backup.BackupTransportService") ) return true;
     		        if( cls.equals("com.google.android.gms.games.chimera.GamesAsyncServiceProxy") ) return true;
     		        if( cls.equals("com.google.android.gms.tapandpay.service.TapAndPayService") ) return true;
     		        if( cls.equals("com.google.android.gms.plus.service.DefaultIntentService") ) return true;
     		        if( cls.equals("com.google.android.gms.chimera.GmsApiService") ) return true;
-                    if( cls.startsWith("com.google.android.finsky.verifier.impl") ) return true;
+                    if( cls.startsWith("com.google.android.finsky") ) return true;
                 }
         }
 
@@ -23184,20 +23238,38 @@ public class ActivityManagerService extends IActivityManager.Stub
         final long nowElapsed = SystemClock.elapsedRealtime();
         final long oldTime = now - ProcessList.MAX_EMPTY_TIME;
         final long oldTimeScreenOff = now - 900*1000;
-        final long oldTimeDisabled = now - 60*1000;
+        final long oldTimeDisabled = now - 50*1000;
+
 
         final int N = mLruProcesses.size();
+
+
+        //boolean disableOOM = SystemProperties.get("persist.pm.disable_oom", "0").equals("1");
+        //if( disableOOM ) {
+        //    Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM ADJ disabled"); 
+        //    return;
+        //}
+
+        boolean disableOOMwhileIdle = true; //SystemProperties.get("persist.pm.disable_oom_while_idle", "0").equals("1");
+
+        if( mDeviceIdleMode && disableOOMwhileIdle && !mDeviceIdleModeTrigger )  {
+            Slog.d(TAG_OOM_ADJ, "getAppStartModeLocked: OOM ADJ disabled while idle"); 
+            return;
+        }
+
+        if( mDeviceIdleMode && (now - mDeviceIdleModeTime) > 60 * 1000 ) mDeviceIdleModeTrigger = false;
+
 
         boolean disabledByDefault = SystemProperties.get("persist.pm.bg_disable", "0").equals("1");
         boolean disabledWhileScreenOff = SystemProperties.get("persist.pm.bg_so_disable", "0").equals("1");
 
         boolean disablePowerSave = 
                     SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
-                    ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && mScreenOn ); 
+                    ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && !mDeviceIdleMode ); 
 
         boolean extremeTaskKiller = 
-                    SystemProperties.get("persist.pm.extreme", "0").equals("1") && !mScreenOn || 
-                    ( SystemProperties.get("persist.pm.extreme_so", "0").equals("1") && mScreenOn );
+                    SystemProperties.get("persist.pm.extreme", "0").equals("1") && mDeviceIdleMode || 
+                    ( SystemProperties.get("persist.pm.extreme_so", "0").equals("1") && !mDeviceIdleMode );
 
 
         if (false) {
@@ -23331,11 +23403,16 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if( lastActivityTime < app.lastProviderTime ) lastActivityTime = app.lastProviderTime;
                 if( lastActivityTime < app.startTime ) lastActivityTime = app.startTime;
 
+                long lastStateTime = lastActivityTime;
+                if( lastStateTime < app.lastStateTime ) lastStateTime = app.lastStateTime;
+
                 // Count the number of process types.
                 switch (app.curProcState) {
 
                     case ActivityManager.PROCESS_STATE_SERVICE:
                         // app == TOP_APP 
+
+                        if( !extremeTaskKiller ) break;
 
                         if( !mOnBattery || disablePowerSave || app == mHomeProcess )  {
                             break;
@@ -23345,18 +23422,16 @@ public class ActivityManagerService extends IActivityManager.Stub
                             break;
                         }
 
-                        if ( uidOnBackgroundWhitelist(app.info.uid) || isOnDeviceIdleWhitelistLocked(app.info.uid) ) {
+                        if ( /*uidOnBackgroundWhitelist(app.info.uid) ||*/ isOnDeviceIdleWhitelistLocked(app.info.uid) ) {
                             break;
                         }
 
                         if( extremeTaskKiller  ) {
-                            blocked = AppOpsManager.MODE_IGNORED;
-                        } else  {
                             blocked = mAppOpsService.noteOperation(AppOpsManager.OP_WAKE_LOCK, app.info.uid, app.info.packageName);
                             force_blocked = blocked;
                         }
 
-                        if( disabledByDefault || (disabledWhileScreenOff&&!mScreenOn) ) {
+                        if( disabledByDefault || (disabledWhileScreenOff&&mDeviceIdleMode) ) {
                             allowed = AppOpsManager.MODE_IGNORED;
                         } else {
                             allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
@@ -23368,7 +23443,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                         }
 
                         if( app == TOP_APP ) {
-                            if( mScreenOn ) break;
+                            if( !mDeviceIdleMode ) break;
                             if( force_blocked != AppOpsManager.MODE_IGNORED ) break;
                         }
 
@@ -23401,10 +23476,16 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                             if( allowed == AppOpsManager.MODE_IGNORED && blocked != AppOpsManager.MODE_IGNORED ) {
                                 if( lastActivityTime < oldTimeScreenOff ) kill = true;
-                                else scheduleNextOomAdj();
+                                else { 
+                                    mDeviceIdleModeTrigger = true;
+                                    scheduleNextOomAdj(); 
+                                }
                             } else if ( allowed == AppOpsManager.MODE_IGNORED && blocked == AppOpsManager.MODE_IGNORED ) {
                                 if( lastActivityTime < oldTimeDisabled ) kill = true;
-                                else scheduleNextOomAdj();
+                                else {
+                                    mDeviceIdleModeTrigger = true;
+                                    scheduleNextOomAdj();
+                                }
                             }
 
 
@@ -23440,24 +23521,25 @@ public class ActivityManagerService extends IActivityManager.Stub
                     case ActivityManager.PROCESS_STATE_LAST_ACTIVITY:
                     case ActivityManager.PROCESS_STATE_CACHED_ACTIVITY_CLIENT:
 
+
+                        if( !extremeTaskKiller ) break;
+
                         if( !mOnBattery || disablePowerSave || app == mHomeProcess ) break;
 
                         if( app.info.uid < Process.FIRST_APPLICATION_UID  ) {
                             break;
                         }
 
-                        if ( uidOnBackgroundWhitelist(app.info.uid) || isOnDeviceIdleWhitelistLocked(app.info.uid) ) {
+                        if ( /*uidOnBackgroundWhitelist(app.info.uid) ||*/ isOnDeviceIdleWhitelistLocked(app.info.uid) ) {
                             break;
                         }
 
                         if( extremeTaskKiller  ) {
-                            blocked = AppOpsManager.MODE_IGNORED;
-                        } else  {
                             blocked = mAppOpsService.noteOperation(AppOpsManager.OP_WAKE_LOCK, app.info.uid, app.info.packageName);
                             force_blocked = blocked;
                         }
 
-                        if( disabledByDefault || (disabledWhileScreenOff&&!mScreenOn) ) {
+                        if( disabledByDefault || (disabledWhileScreenOff&&mDeviceIdleMode) ) {
                             allowed = AppOpsManager.MODE_IGNORED;
                         } else {
                             allowed = mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
@@ -23469,7 +23551,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                         }
 
                         if( app == TOP_APP ) {
-                            if( mScreenOn ) break;
+                            if( !mDeviceIdleMode ) break;
                             if( force_blocked != AppOpsManager.MODE_IGNORED ) break;
                         }
 
@@ -23478,10 +23560,16 @@ public class ActivityManagerService extends IActivityManager.Stub
                         
                         if( allowed == AppOpsManager.MODE_IGNORED && blocked != AppOpsManager.MODE_IGNORED ) {
                             if( lastActivityTime < oldTimeScreenOff ) kill = true;
-                            else scheduleNextOomAdj();
+                            else { 
+                                mDeviceIdleModeTrigger = true;
+                                scheduleNextOomAdj();
+                            }
                         } else if ( allowed == AppOpsManager.MODE_IGNORED && blocked == AppOpsManager.MODE_IGNORED ) {
                             if( lastActivityTime < oldTimeDisabled ) kill = true;
-                            else scheduleNextOomAdj();
+                            else  {
+                                mDeviceIdleModeTrigger = true;
+                                scheduleNextOomAdj();
+                            }
                         }
 
                         /*Slog.d(TAG_OOM_ADJ,"getAppStartModeLocked: OOM check CAC app app=" + app + 
@@ -23521,30 +23609,36 @@ public class ActivityManagerService extends IActivityManager.Stub
                             break;
                         }
 
-                        if (uidOnBackgroundWhitelist(app.info.uid) || isOnDeviceIdleWhitelistLocked(app.info.uid) ) {
+                        if (/*uidOnBackgroundWhitelist(app.info.uid) ||*/ isOnDeviceIdleWhitelistLocked(app.info.uid) ) {
                             break;
                         }
 
                         allowed = AppOpsManager.MODE_IGNORED;
 
                         if( extremeTaskKiller  ) {
-                            blocked = AppOpsManager.MODE_IGNORED;
-                        } else  {
                             blocked = mAppOpsService.noteOperation(AppOpsManager.OP_WAKE_LOCK, app.info.uid, app.info.packageName);
                             force_blocked = blocked;
                         }
 
                         if( app == TOP_APP ) {
-                            if( mScreenOn ) break;
+                            if( !mDeviceIdleMode ) break;
                             if( force_blocked != AppOpsManager.MODE_IGNORED ) break;
                         }
 
+                        if( lastActivityTime < lastStateTime ) lastActivityTime = lastStateTime;
+
                         if( allowed == AppOpsManager.MODE_IGNORED && blocked != AppOpsManager.MODE_IGNORED ) {
                             if( lastActivityTime < oldTimeScreenOff ) kill = true;
-                            else scheduleNextOomAdj();
+                            else {
+                                mDeviceIdleModeTrigger = true;
+                                scheduleNextOomAdj();
+                            }
                         } else if ( allowed == AppOpsManager.MODE_IGNORED && blocked == AppOpsManager.MODE_IGNORED ) {
                             if( lastActivityTime < oldTimeDisabled ) kill = true;
-                            else scheduleNextOomAdj();
+                            else {
+                                mDeviceIdleModeTrigger = true;
+                                scheduleNextOomAdj();
+                            }
                         } else if ( numEmpty > mConstants.CUR_TRIM_EMPTY_PROCESSES && lastActivityTime < oldTime ) {
                             kill = true;
                         }
@@ -23817,6 +23911,14 @@ public class ActivityManagerService extends IActivityManager.Stub
         for (int i=mActiveUids.size()-1; i>=0; i--) {
             final UidRecord uidRec = mActiveUids.valueAt(i);
             int uidChange = UidRecord.CHANGE_PROCSTATE;
+
+            if( mDeviceIdleMode ) {
+                if (becameIdle == null) {
+                    becameIdle = new ArrayList<>();
+                }
+                becameIdle.add(uidRec);
+            }
+
             if (uidRec.curProcState != ActivityManager.PROCESS_STATE_NONEXISTENT
                     && (uidRec.setProcState != uidRec.curProcState
                            || uidRec.setWhitelist != uidRec.curWhitelist)) {
@@ -23842,11 +23944,13 @@ public class ActivityManagerService extends IActivityManager.Stub
                     }
                     if (uidRec.idle && !uidRec.setIdle) {
                         uidChange = UidRecord.CHANGE_IDLE;
-                        if (becameIdle == null) {
-                            becameIdle = new ArrayList<>();
+                        if( !mDeviceIdleMode ) {
+                            if (becameIdle == null) {
+                                becameIdle = new ArrayList<>();
+                            }
+                            becameIdle.add(uidRec);
                         }
-                        becameIdle.add(uidRec);
-                    }
+                    } 
                 } else {
                     if (uidRec.idle) {
                         uidChange = UidRecord.CHANGE_ACTIVE;
@@ -23871,7 +23975,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                 if (uidRec.foregroundServices) {
                     mServices.foregroundServiceProcStateChangedLocked(uidRec);
                 }
-            }
+            } 
         }
         if (mLocalPowerManager != null) {
             mLocalPowerManager.finishUidChanges();
@@ -23881,6 +23985,7 @@ public class ActivityManagerService extends IActivityManager.Stub
             // If we have any new uids that became idle this time, we need to make sure
             // they aren't left with running services.
             for (int i = becameIdle.size() - 1; i >= 0; i--) {
+                Slog.i(TAG, "getAppStartBlocked: checking uid=" + becameIdle.get(i).uid);                
                 mServices.stopInBackgroundLocked(becameIdle.get(i).uid);
             }
         }

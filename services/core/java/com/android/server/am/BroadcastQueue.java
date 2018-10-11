@@ -631,7 +631,7 @@ public final class BroadcastQueue {
                     Slog.e(TAG, "getAppBlocked:(1) Can't get appinfo: from=" + r.callerPackage + " receiving intent=" + r.intent);
                 }    
 
-                allowed = mService.getAppStartModeLocked(
+                allowed = mService.getAppStartModeLocked(true,
                         filter.receiverList.uid, filter.packageName,
                         targetSdkVersion, r.callingPid, true, false, r.intent.toString() );
 
@@ -1311,8 +1311,10 @@ public final class BroadcastQueue {
 
             if (!skip) {
                 int allowed = ActivityManager.APP_START_MODE_DELAYED;
+
+                boolean enableFgs = app != null && app.thread != null && !app.killed;
    
-                allowed = mService.getAppStartModeLocked(
+                allowed = mService.getAppStartModeLocked(enableFgs,
                         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
                         info.activityInfo.applicationInfo.targetSdkVersion, r.callingPid, true, false, r.intent.toString() );
 
