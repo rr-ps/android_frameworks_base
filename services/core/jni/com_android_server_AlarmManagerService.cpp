@@ -175,8 +175,13 @@ int AlarmImpl::waitForAlarm()
 
     int nevents = epoll_wait(epollfd, events, N_ANDROID_TIMERFDS, -1);
     if (nevents < 0) {
+        ALOGW("epoll_wait error %d: %s\n", errno, strerror(errno));
         return nevents;
+    } else if( nevents == 0 )
+    {
+        ALOGW("epoll_wait returned 0\n");
     }
+
 
     int result = 0;
     for (int i = 0; i < nevents; i++) {
@@ -185,11 +190,13 @@ int AlarmImpl::waitForAlarm()
         ssize_t err = read(fds[alarm_idx], &unused, sizeof(unused));
         if (err < 0) {
             if (alarm_idx == ANDROID_ALARM_TYPE_COUNT && errno == ECANCELED) {
+                ALOGW("ANDROID_ALARM_TIME_CHANGE_MASK\n");
                 result |= ANDROID_ALARM_TIME_CHANGE_MASK;
             } else {
                 return err;
             }
         } else {
+            ALOGW("epoll_wait event on %d\n", alarm_idx);
             result |= (1 << alarm_idx);
         }
     }
@@ -352,7 +359,11 @@ static jlong android_server_AlarmManagerService_init(JNIEnv*, jobject)
 
     for (size_t i = 0; i < fds.size(); i++) {
         epoll_event event;
-        event.events = EPOLLIN | EPOLLWAKEUP;
+        if( android_alarm_to_clockid[i] == CLOCK_REALTIME_ALARM || android_alarm_to_clockid[i] == CLOCK_BOOTTIME_ALARM ) {
+            event.events = EPOLLIN | EPOLLWAKEUP;
+        } else {
+            event.events = EPOLLIN;
+        }
         event.data.u32 = i;
 
         int err = epoll_ctl(epollfd, EPOLL_CTL_ADD, fds[i], &event);
@@ -368,13 +379,14 @@ static jlong android_server_AlarmManagerService_init(JNIEnv*, jobject)
     /* 0 = disarmed; the timerfd doesn't need to be armed to get
        RTC change notifications, just set up as cancelable */
 
+    /*
     int err = timerfd_settime(fds[ANDROID_ALARM_TYPE_COUNT],
             TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &spec, NULL);
     if (err < 0) {
         ALOGE("timerfd_settime() failed: %s", strerror(errno));
         delete ret;
         return 0;
-    }
+    }*/
 
     return reinterpret_cast<jlong>(ret);
 }
