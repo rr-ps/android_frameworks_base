@@ -567,7 +567,7 @@ public class GnssLocationProvider implements LocationProviderInterface {
         switch (result.gpsMode) {
             case BatterySaverPolicy.GPS_MODE_DISABLED_WHEN_SCREEN_OFF:
                 // If we are in battery saver mode and the screen is off, disable GPS.
-                disableGps |= result.batterySaverEnabled && !mPowerManager.isInteractive();
+                //disableGps |= result.batterySaverEnabled && !mPowerManager.isInteractive();
                 break;
         }
 

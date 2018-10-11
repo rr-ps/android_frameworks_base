@@ -54,6 +54,7 @@ public final class DeviceIdleJobsController extends StateController {
      * True when in device idle mode, so we don't want to schedule any jobs.
      */
     private boolean mDeviceIdleMode;
+    private boolean mLowPowerMode;
     private int[] mDeviceIdleWhitelistAppIds;
 
     final JobStore.JobStatusFunctor mUpdateFunctor = new JobStore.JobStatusFunctor() {
@@ -88,6 +89,10 @@ public final class DeviceIdleJobsController extends StateController {
                         : false);
             } else if (PowerManager.ACTION_POWER_SAVE_WHITELIST_CHANGED.equals(action)) {
                 updateWhitelist();
+            } else if (PowerManager.ACTION_POWER_SAVE_MODE_CHANGED.equals(action)) { 
+                updateLowPowerMode(mPowerManager != null
+                        ? (mPowerManager.isPowerSaveMode())
+                        : false);
             }
         }
     };
@@ -104,6 +109,7 @@ public final class DeviceIdleJobsController extends StateController {
         final IntentFilter filter = new IntentFilter();
         filter.addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED);
         filter.addAction(PowerManager.ACTION_LIGHT_DEVICE_IDLE_MODE_CHANGED);
+        filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED);
         filter.addAction(PowerManager.ACTION_POWER_SAVE_WHITELIST_CHANGED);
         mContext.registerReceiverAsUser(
                 mBroadcastReceiver, UserHandle.ALL, filter, null, null);
@@ -128,6 +134,28 @@ public final class DeviceIdleJobsController extends StateController {
             mStateChangedListener.onDeviceIdleStateChanged(enabled);
         }
     }
+
+    void updateLowPowerMode(boolean enabled) {
+        boolean changed = false;
+        // Need the whitelist to be ready when going into idle
+        if (mDeviceIdleWhitelistAppIds == null) {
+            updateWhitelist();
+        }
+        synchronized (mLock) {
+            if (mLowPowerMode != enabled) {
+                changed = true;
+            }
+            mDeviceIdleMode = enabled;
+            if (LOG_DEBUG) Slog.d(LOG_TAG, "mLowPowerMode=" + mLowPowerMode);
+            mJobSchedulerService.getJobStore().forEachJob(mUpdateFunctor);
+        }
+        // Inform the job scheduler service about idle mode changes
+        if (changed) {
+            mStateChangedListener.onDeviceIdleStateChanged(enabled);
+        }
+    }
+
+
 
     /**
      * Fetches the latest whitelist from the device idle controller.
@@ -158,7 +186,7 @@ public final class DeviceIdleJobsController extends StateController {
 
     private void updateTaskStateLocked(JobStatus task) {
         final boolean whitelisted = isWhitelistedLocked(task);
-        final boolean enableTask = !mDeviceIdleMode || whitelisted;
+        final boolean enableTask = (!mDeviceIdleMode &&!mLowPowerMode) || whitelisted;
         task.setDeviceNotDozingConstraintSatisfied(enableTask, whitelisted);
     }
 

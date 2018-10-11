@@ -843,7 +843,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
             if ((brightness > mScreenBrightnessRangeMinimum) &&
                   ((mSmartPixelsEnable == 0) || (mSmartPixelsOnPowerSave == 0))) {
                 final float brightnessFactor =
-                        Math.min(mPowerRequest.screenLowPowerBrightnessFactor, 1);
+                        Math.min(/*mPowerRequest.screenLowPowerBrightnessFactor*/1, 1);
                 final int lowPowerBrightness = (int) (brightness * brightnessFactor);
                 brightness = Math.max(lowPowerBrightness, mScreenBrightnessRangeMinimum);
             }
