@@ -458,7 +458,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
     private static final int MAX_NETWORK_INFO_LOGS = 40;
     private final LocalLog mNetworkInfoBlockingLogs = new LocalLog(MAX_NETWORK_INFO_LOGS);
 
-    private static final int MAX_WAKELOCK_LOGS = 20;
+    private static final int MAX_WAKELOCK_LOGS = 200;
     private final LocalLog mWakelockLogs = new LocalLog(MAX_WAKELOCK_LOGS);
     private int mTotalWakelockAcquisitions = 0;
     private int mTotalWakelockReleases = 0;
@@ -737,10 +737,10 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
         final PowerManager powerManager = (PowerManager) context.getSystemService(
                 Context.POWER_SERVICE);
-        mNetTransitionWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+        mNetTransitionWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + "Transition");
         mNetTransitionWakeLockTimeout = mContext.getResources().getInteger(
                 com.android.internal.R.integer.config_networkTransitionTimeout);
-        mPendingIntentWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+        mPendingIntentWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + "Intent");
 
         mNetConfigs = new NetworkConfig[ConnectivityManager.MAX_NETWORK_TYPE+1];
 
