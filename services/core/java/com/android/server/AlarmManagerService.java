@@ -1207,6 +1207,10 @@ class AlarmManagerService extends SystemService {
 		            blockAlarm = true;
 	        } else if( blockTag.equals("android:WifiConnectivityManager Restart Scan") ) {
 	   	        blockAlarm = true;
+            } else if( !SystemProperties.getBoolean("persist.ps.gps_unrestricted", false) &&
+                        blockTag.startsWith("com.google.android.gms:com.google.android.location") ) {
+                blockAlarm = true;
+                return;
 	        } else if( callingPackage != null && callingPackage.startsWith("com.google.android.gms") ) {
 		        blockAlarm = true;
             } else if(blockTag.startsWith("com.qualcomm.qti.biometrics.fingerprint") && 
@@ -1246,7 +1250,7 @@ class AlarmManagerService extends SystemService {
                 long trigger = triggerElapsed;
 
                 if (type == AlarmManager.RTC_WAKEUP || type == AlarmManager.RTC ) {
-                    trigger = triggerAtTime - SystemClock.elapsedRealtime();
+                    //trigger = triggerAtTime - SystemClock.elapsedRealtime();
                 } else if( type == AlarmManager.ELAPSED_REALTIME_WAKEUP ) {
                 }
                 long whenInterval = trigger; 
@@ -2234,6 +2238,12 @@ class AlarmManagerService extends SystemService {
     }
 
     private void setLocked(int type, long when) {
+
+        if(mPendingIdleUntil != null && type != 0 && type != 2 ) {
+            Slog.v(TAG, "Do not arm non-wakeup alarm while idle");
+            return;
+        }
+
         long whenInterval = when - SystemClock.elapsedRealtime();
         long alarmSecondsInterval = whenInterval / 1000;
         long alarmNanosecondsInterval = (whenInterval % 1000) * 1000 * 1000;
@@ -3294,7 +3304,7 @@ class AlarmManagerService extends SystemService {
                 if (!mWakeLock.isHeld()) {
                     mWakeLock.acquire();
                 }
-                mHandler.obtainMessage(AlarmHandler.REPORT_ALARMS_ACTIVE, 1, 0).sendToTarget();
+                mHandler.obtainMessage(AlarmHandler.REPORT_ALARMS_ACTIVE, 1, 1).sendToTarget();
             }
             final InFlight inflight = new InFlight(AlarmManagerService.this,
                     alarm.operation, alarm.listener, alarm.workSource, alarm.uid,
