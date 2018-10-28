@@ -19,7 +19,7 @@
 //#define LOG_NDEBUG 0
 
 #include <android/hardware/power/1.1/IPower.h>
-#include <vendor/lineage/power/1.0/ILineagePower.h>
+//#include <vendor/lineage/power/1.0/ILineagePower.h>
 #include "JNIHelp.h"
 #include "jni.h"
 
@@ -46,7 +46,7 @@ using android::hardware::power::V1_1::IPower;
 using android::hardware::power::V1_0::PowerHint;
 using android::hardware::power::V1_0::Feature;
 using android::String8;
-using vendor::lineage::power::V1_0::LineageFeature;
+//using vendor::lineage::power::V1_0::LineageFeature;
 
 namespace android {
 
@@ -61,9 +61,9 @@ static struct {
 static jobject gPowerManagerServiceObj;
 sp<android::hardware::power::V1_0::IPower> gPowerHalV1_0 = nullptr;
 sp<android::hardware::power::V1_1::IPower> gPowerHalV1_1 = nullptr;
-sp<vendor::lineage::power::V1_0::ILineagePower> gLineagePowerHalV1_0 = nullptr;
+//sp<vendor::lineage::power::V1_0::ILineagePower> gLineagePowerHalV1_0 = nullptr;
 bool gPowerHalExists = true;
-bool gLineagePowerHalExists = true;
+//bool gLineagePowerHalExists = true;
 std::mutex gPowerHalMutex;
 static nsecs_t gLastEventTime[USER_ACTIVITY_EVENT_LAST + 1];
 
@@ -100,6 +100,7 @@ bool getPowerHal() {
 
 // Check validity of current handle to the Lineage power HAL service, and call getService() if necessary.
 // The caller must be holding gPowerHalMutex.
+/*
 bool getLineagePowerHal() {
     if (gLineagePowerHalExists && gLineagePowerHalV1_0 == nullptr) {
         gLineagePowerHalV1_0 = vendor::lineage::power::V1_0::ILineagePower::getService();
@@ -112,7 +113,7 @@ bool getLineagePowerHal() {
     }
     return gLineagePowerHalV1_0 != nullptr;
 }
-
+*/
 // Check if a call to a power HAL function failed; if so, log the failure and invalidate the
 // current handle to the power HAL service. The caller must be holding gPowerHalMutex.
 static void processReturn(const Return<void> &ret, const char* functionName) {
@@ -235,11 +236,18 @@ static void nativeSetFeature(JNIEnv *env, jclass clazz, jint featureId, jint dat
 
 static jint nativeGetFeature(JNIEnv *env, jclass clazz, jint featureId) {
     int value = -1;
-
+/*
     std::lock_guard<std::mutex> lock(gPowerHalMutex);
-    if (getLineagePowerHal()) {
-        value = gLineagePowerHalV1_0->getFeature((LineageFeature)featureId);
+
+
+    if (getPowerHal()) {
+        value = gPowerHalV1_0->getFeature((Feature)featureId);
     }
+*/
+
+    //if (getLineagePowerHal()) {
+    //    value = gLineagePowerHalV1_0->getFeature((LineageFeature)featureId);
+    //}
 
     return (jint)value;
 }
