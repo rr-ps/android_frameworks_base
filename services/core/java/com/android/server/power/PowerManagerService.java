@@ -1838,10 +1838,10 @@ public final class PowerManagerService extends SystemService
             mBatteryLevelLow = mBatteryManagerInternal.getBatteryLevelLow();
 
 	        if(mIsPowered) {
-		        SystemProperties.set("power.is_powered", "1");
+		        SystemPropertiesSet("power.is_powered", "1");
                 setOnBatteryStatic(false);
     	    } else {
-    		    SystemProperties.set("power.is_powered", "0");
+    		    SystemPropertiesSet("power.is_powered", "0");
                 setOnBatteryStatic(true);
     	    }
 
@@ -2617,15 +2617,25 @@ public final class PowerManagerService extends SystemService
 
         if( mDisplayPowerRequest.policy != DisplayPowerRequest.POLICY_OFF &&  mDisplayPowerRequest.policy != DisplayPowerRequest.POLICY_DOZE ) {
             setScreenOnStatic(true);
-		    SystemProperties.set("power.screen_doze", "0");
+		    SystemPropertiesSet("power.screen_doze", "0");
             Slog.d(TAG, "onDisplayPowerPolicyChanging: power_profile=" + SystemProperties.get("persist.pm.high_perf"));
-            SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
-		    SystemProperties.set("power.screen_off", "0");
-		    SystemProperties.set("power.screen_on", "1");
+            SystemPropertiesSet("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
+		    SystemPropertiesSet("power.screen_off", "0");
+		    SystemPropertiesSet("power.screen_on", "1");
         }
 
         if (DEBUG_SPEW_DOZE) {
               //Slog.d(TAG, "onDisplayPowerPolicyChanging: policy=" + mDisplayPowerRequest.policy);
+        }
+    }
+
+    private void SystemPropertiesSet(String key, String value)
+    {
+        try {
+            SystemProperties.set(key,value);
+        }
+        catch( Exception e ) {
+            Slog.e(TAG, "SystemPropertiesSet: unable to set property " + key + " to " + value, e);
         }
     }
 
@@ -2649,18 +2659,19 @@ public final class PowerManagerService extends SystemService
         }
 
         if (mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_DOZE ) {
-		    SystemProperties.set("power.screen_off", "1");
-		    SystemProperties.set("power.screen_on", "0");
-		    SystemProperties.set("power.screen_doze", "1");
+		    SystemPropertiesSet("power.screen_off", "1");
+		    SystemPropertiesSet("power.screen_on", "0");
+		    SystemPropertiesSet("power.screen_doze", "1");
             Slog.d(TAG, "onDisplayPowerPolicyChanged 1: power_profile=9");
-            SystemProperties.set("pm.power_profile","9");
+            SystemPropertiesSet("pm.power_profile","9");
                     
         } else if (mDisplayPowerRequest.policy == DisplayPowerRequest.POLICY_OFF ) {
-		    SystemProperties.set("power.screen_doze", "0");
+            
+		    SystemPropertiesSet("power.screen_doze", "0");
             Slog.d(TAG, "onDisplayPowerPolicyChanged 2: power_profile=9");
-            SystemProperties.set("pm.power_profile","9");
-		    SystemProperties.set("power.screen_off", "1");
-		    SystemProperties.set("power.screen_on", "0");
+            SystemPropertiesSet("pm.power_profile","9");
+		    SystemPropertiesSet("power.screen_off", "1");
+		    SystemPropertiesSet("power.screen_on", "0");
             setScreenOnStatic(false);
         }
     }
@@ -2850,7 +2861,7 @@ public final class PowerManagerService extends SystemService
                 mLowPowerModeState = 0;
                 lowPowerModeState = 0;
                 Slog.d(TAG, "updateSuspendBlockerLocked 1: power_profile=" + SystemProperties.get("persist.pm.high_perf"));
-                SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
+                SystemPropertiesSet("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
                    
             } 
         }
@@ -2859,7 +2870,7 @@ public final class PowerManagerService extends SystemService
                 //SystemProperties.set("pm.power_profile","0");
              mLowPowerModeState = 0;
              Slog.d(TAG, "updateSuspendBlockerLocked 2: power_profile=" + SystemProperties.get("persist.pm.high_perf"));
-             SystemProperties.set("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
+             SystemPropertiesSet("pm.power_profile",SystemProperties.get("persist.pm.high_perf"));
         } 
 
         if (needDisplaySuspendBlocker && !mHoldingDisplaySuspendBlocker) {
@@ -2892,7 +2903,7 @@ public final class PowerManagerService extends SystemService
         if( !needWakeLockSuspendBlocker && mLowPowerModeState != lowPowerModeState && mDisplayPowerRequest.isBrightOrDim() ) {
             mLowPowerModeState = lowPowerModeState;
             if(  lowPowerModeState > 0 ) { 
-                SystemProperties.set("pm.power_profile", Integer.toString(lowPowerModeState));
+                SystemPropertiesSet("pm.power_profile", Integer.toString(lowPowerModeState));
                 Slog.d(TAG, "updateSuspendBlockerLocked 3: power_profile=" + lowPowerModeState);
             }
         }
