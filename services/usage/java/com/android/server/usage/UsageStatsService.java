@@ -604,17 +604,19 @@ public class UsageStatsService extends SystemService implements
     }
 
     private void notifyBatteryStats(String packageName, int userId, boolean idle) {
-        try {
-            final int uid = mPackageManager.getPackageUidAsUser(packageName,
-                    PackageManager.MATCH_UNINSTALLED_PACKAGES, userId);
-            if (idle) {
-                mBatteryStats.noteEvent(BatteryStats.HistoryItem.EVENT_PACKAGE_INACTIVE,
-                        packageName, uid);
-            } else {
-                mBatteryStats.noteEvent(BatteryStats.HistoryItem.EVENT_PACKAGE_ACTIVE,
-                        packageName, uid);
+        if (mSystemServicesReady) {
+            try {
+                final int uid = mPackageManager.getPackageUidAsUser(packageName,
+                        PackageManager.MATCH_UNINSTALLED_PACKAGES, userId);
+                if (idle) {
+                    mBatteryStats.noteEvent(BatteryStats.HistoryItem.EVENT_PACKAGE_INACTIVE,
+                            packageName, uid);
+                } else {
+                    mBatteryStats.noteEvent(BatteryStats.HistoryItem.EVENT_PACKAGE_ACTIVE,
+                            packageName, uid);
+                }
+            } catch (NameNotFoundException | RemoteException e) {
             }
-        } catch (NameNotFoundException | RemoteException e) {
         }
     }
 
