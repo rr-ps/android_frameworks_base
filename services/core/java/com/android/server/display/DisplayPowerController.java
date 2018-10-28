@@ -452,7 +452,7 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                 com.android.internal.R.bool.config_displayBrightnessBucketsInDoze);
 
         if (!DEBUG_PRETEND_PROXIMITY_SENSOR_ABSENT) {
-            mProximitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+            mProximitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY,true);
             if (mProximitySensor != null) {
                 mProximityThreshold = Math.min(mProximitySensor.getMaximumRange(),
                         TYPICAL_PROXIMITY_THRESHOLD);
