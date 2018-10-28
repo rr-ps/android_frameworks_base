@@ -204,6 +204,8 @@ final class ProcessRecord {
     boolean whitelistManager;
 
     long startTime;
+    long startTimeElapsed;
+    long lastActivityTimeElapsed;
 
     void dump(PrintWriter pw, String prefix) {
         final long nowUptime = SystemClock.uptimeMillis();
@@ -448,6 +450,7 @@ final class ProcessRecord {
         persistent = false;
         removed = false;
         startTime = lastStateTime = lastPssTime = nextPssTime = SystemClock.uptimeMillis();
+        lastActivityTimeElapsed = startTimeElapsed = SystemClock.elapsedRealtime();
     }
 
     public void setPid(int _pid) {

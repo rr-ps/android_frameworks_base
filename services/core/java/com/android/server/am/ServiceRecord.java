@@ -120,6 +120,7 @@ final class ServiceRecord extends Binder {
     String stringName;      // caching of toString
 
     private int lastStartId;    // identifier of most recent start request.
+    long lastActivityElapsed;      // last time there was some activity on the service.
 
     static class StartItem {
         final ServiceRecord sr;
@@ -331,6 +332,7 @@ final class ServiceRecord extends Binder {
         this.restarter = restarter;
         createTime = SystemClock.elapsedRealtime();
         lastActivity = SystemClock.uptimeMillis();
+        lastActivityElapsed = SystemClock.elapsedRealtime();
         userId = UserHandle.getUserId(appInfo.uid);
         createdFromFg = callerIsFg;
     }

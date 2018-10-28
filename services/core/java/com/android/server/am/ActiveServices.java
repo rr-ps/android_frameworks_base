@@ -413,6 +413,7 @@ public final class ActiveServices {
             if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "START SERVICE WHILE RESTART PENDING: " + r);
         }
         r.lastActivity = SystemClock.uptimeMillis();
+        r.lastActivityElapsed = SystemClock.elapsedRealtime();
         r.startRequested = true;
         r.delayedStop = false;
         r.fgRequired = fgRequired;
@@ -1401,6 +1402,8 @@ public final class ActiveServices {
 
             if ((flags&Context.BIND_AUTO_CREATE) != 0) {
                 s.lastActivity = SystemClock.uptimeMillis();
+                s.lastActivityElapsed = SystemClock.elapsedRealtime();
+
                 if (!s.hasAutoCreateConnections()) {
                     // This is the first binding, let the tracker know.
                     ServiceState stracker = s.getTracker();
@@ -1455,6 +1458,8 @@ public final class ActiveServices {
 
             if ((flags&Context.BIND_AUTO_CREATE) != 0) {
                 s.lastActivity = SystemClock.uptimeMillis();
+                s.lastActivityElapsed = SystemClock.elapsedRealtime();
+
                 if (bringUpServiceLocked(s, service.getFlags(), callerFg, false,
                         permissionsReviewRequired) != null) {
                     return 0;
@@ -2235,6 +2240,8 @@ public final class ActiveServices {
                     + ", ProcessRecord.uid = " + app.uid);
         r.app = app;
         r.restartTime = r.lastActivity = SystemClock.uptimeMillis();
+        r.lastActivityElapsed = SystemClock.elapsedRealtime();
+
 
         final boolean newService = app.services.add(r);
         bumpServiceExecutingLocked(r, execInFg, "create");
@@ -3252,6 +3259,7 @@ public final class ActiveServices {
         info.clientCount = r.connections.size();
         info.crashCount = r.crashCount;
         info.lastActivityTime = r.lastActivity;
+        //info.lastActivityTimeElapsed = r.lastActivityElapsed;
         if (r.isForeground) {
             info.flags |= ActivityManager.RunningServiceInfo.FLAG_FOREGROUND;
         }
