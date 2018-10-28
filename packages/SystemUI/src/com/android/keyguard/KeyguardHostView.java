@@ -291,6 +291,16 @@ public class KeyguardHostView extends FrameLayout implements SecurityCallback {
         if (DEBUG) Log.d(TAG, "screen on, instance " + Integer.toHexString(hashCode()));
         mSecurityContainer.onResume(KeyguardSecurityView.SCREEN_ON);
         requestFocus();
+
+/*        boolean mFaceAuto = Settings.Secure.getIntForUser(getContext().getContentResolver(),
+                       Settings.Secure.FACE_AUTO_UNLOCK, 0,
+                       UserHandle.USER_CURRENT) == 1;
+        int userId = KeyguardUpdateMonitor.getCurrentUser();
+        if (mKeyguardUpdateMonitor.getUserCanSkipBouncer(userId)
+            && mKeyguardUpdateMonitor.getUserHasTrust(userId) && mFaceAuto) {
+            dismiss(false, userId);
+        }*/
+
     }
 
     /**
