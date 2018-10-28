@@ -50,7 +50,7 @@ import java.io.PrintWriter;
 final class DisplayPowerState {
     private static final String TAG = "DisplayPowerState";
 
-    private static boolean DEBUG = true;
+    private static boolean DEBUG = false;
     private static String COUNTER_COLOR_FADE = "ColorFadeLevel";
 
     private final Handler mHandler;
@@ -136,10 +136,10 @@ final class DisplayPowerState {
      */
     public void setScreenState(int state) {
         if (mScreenState != state) {
-            //if (DEBUG) {
+            if (DEBUG) {
                 Slog.d(TAG, "setScreenState: state=" + state);
-            //}
-
+            }
+            
             mScreenState = state;
             mScreenReady = false;
             scheduleScreenUpdate();
@@ -160,9 +160,9 @@ final class DisplayPowerState {
      */
     public void setScreenBrightness(int brightness) {
         if (mScreenBrightness != brightness) {
-            //if (DEBUG) {
+            if (DEBUG) {
                 Slog.d(TAG, "setScreenBrightness: brightness=" + brightness);
-            //}
+            }
 
             mScreenBrightness = brightness;
             if (mScreenState != Display.STATE_OFF) {
