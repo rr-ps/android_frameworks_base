@@ -532,7 +532,7 @@ public class WindowManagerService extends IWindowManager.Stub
     boolean mDisableOverlays;
     boolean mDisplayEnabled = false;
     boolean mSystemBooted = false;
-    boolean mForceDisplayEnabled = false;
+    boolean mForceDisplayEnabled = true;
     boolean mShowingBootMessages = false;
     boolean mBootAnimationStopped = false;
 
@@ -3437,7 +3437,7 @@ public class WindowManagerService extends IWindowManager.Stub
             hideBootMessagesLocked();
             // If the screen still doesn't come up after 30 seconds, give
             // up and turn it on.
-            mH.sendEmptyMessageDelayed(H.BOOT_TIMEOUT, 30 * 1000);
+            mH.sendEmptyMessageDelayed(H.BOOT_TIMEOUT, 60 * 1000);
         }
 
         mPolicy.systemBooted();
@@ -3462,11 +3462,14 @@ public class WindowManagerService extends IWindowManager.Stub
                     + " mSystemBooted=" + mSystemBooted, here);
         }
         if (mDisplayEnabled) {
+            Slog.i(TAG_WM, "enableScreenIfNeededLocked: mDisplayEnabled=true");
             return;
         }
         if (!mSystemBooted && !mShowingBootMessages) {
+            Slog.i(TAG_WM, "enableScreenIfNeededLocked: mSystemBooted=false && mShowingBootMessages=false");
             return;
         }
+        Slog.i(TAG_WM, "enableScreenIfNeededLocked: H.ENABLE_SCREEN");
         mH.sendEmptyMessage(H.ENABLE_SCREEN);
     }
 
@@ -3494,7 +3497,9 @@ public class WindowManagerService extends IWindowManager.Stub
                     + " mForceDisplayEnabled=" + mForceDisplayEnabled
                     + " mShowingBootMessages=" + mShowingBootMessages
                     + " mSystemBooted=" + mSystemBooted
-                    + " mOnlyCore=" + mOnlyCore,
+                    + " mOnlyCore=" + mOnlyCore
+                    + " mPolicy.canDismissBootAnimation()=" + mPolicy.canDismissBootAnimation()
+                    + " getDefaultDisplayContentLocked().checkWaitingForWindows()=" + getDefaultDisplayContentLocked().checkWaitingForWindows(),
                     new RuntimeException("here").fillInStackTrace());
             if (mDisplayEnabled) {
                 return;
@@ -3504,7 +3509,7 @@ public class WindowManagerService extends IWindowManager.Stub
             }
 
             if (!mShowingBootMessages && !mPolicy.canDismissBootAnimation()) {
-                return;
+                 return;
             }
 
             // Don't enable the screen until all existing windows have been drawn.
@@ -5095,6 +5100,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 }
 
                 case ENABLE_SCREEN: {
+                    Slog.w(TAG_WM, "ENABLE_SCREEN");
                     performEnableScreen();
                     break;
                 }

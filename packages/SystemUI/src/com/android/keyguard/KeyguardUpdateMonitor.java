@@ -61,6 +61,7 @@ import android.os.ServiceManager;
 import android.os.Trace;
 import android.os.UserHandle;
 import android.os.UserManager;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.service.dreams.DreamService;
 import android.service.dreams.IDreamManager;
@@ -72,7 +73,6 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
-
 import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.telephony.IccCardConstants.State;
 import com.android.internal.telephony.PhoneConstants;
@@ -1065,6 +1065,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
     }
 
     private void handleScreenTurnedOn() {
+        Log.v(TAG, "handleScreenTurnedOn " );
         final int count = mCallbacks.size();
         for (int i = 0; i < count; i++) {
             KeyguardUpdateMonitorCallback cb = mCallbacks.get(i).get();
@@ -1072,6 +1073,36 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
                 cb.onScreenTurnedOn();
             }
         }
+
+
+        String wakeupReason = SystemProperties.get("power.wake_reason","unknown");
+
+        if( wakeupReason.equals("android.policy:POWER") ||
+            wakeupReason.equals("com.android.systemui:NODOZE") ||
+            wakeupReason.equals("wakelock:qfp-service") ) {
+
+            int userId = getCurrentUser();
+            Log.v(TAG, "handleScreenTurnedOn: getStrongAuthTracker:" + Integer.toHexString(getStrongAuthTracker().getStrongAuthForUser(userId)));
+
+            if( getStrongAuthTracker().getStrongAuthForUser(userId) == 0 &&
+                Settings.Secure.getIntForUser(mContext.getContentResolver(),
+                           Settings.Secure.FACE_AUTO_UNLOCK, 0,
+                           UserHandle.USER_CURRENT) == 1 ) {
+
+                //if (DEBUG) {
+                    Log.v(TAG, "handleScreenTurnedOn: user authenticated, update trust :" + Integer.toHexString(getStrongAuthTracker().getStrongAuthForUser(userId)));
+                //}
+
+                for (int i = 0; i < mCallbacks.size(); i++) {
+                    KeyguardUpdateMonitorCallback cb = mCallbacks.get(i).get();
+                    if (cb != null) {
+                        cb.onTrustChanged(userId);
+                    }
+                }
+
+            }
+        }
+
     }
 
     private void handleScreenTurnedOff() {

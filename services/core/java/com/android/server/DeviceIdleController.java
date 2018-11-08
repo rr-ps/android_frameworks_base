@@ -1725,13 +1725,13 @@ public class DeviceIdleController extends SystemService
         synchronized (this) {
             int callingAppId = UserHandle.getAppId(callingUid);
 
-            /*
-            if (callingAppId >= Process.FIRST_APPLICATION_UID ) {
-                if (!mPowerSaveWhitelistSystemAppIds.get(callingAppId)) {
-                    throw new SecurityException("Calling app " + UserHandle.formatUid(callingUid)
-                            + " is not on whitelist");
+            
+            if (callingAppId >= Process.FIRST_APPLICATION_UID && callingAppId != PowerManagerService.getGmsUid() ) {
+                if (!mPowerSaveWhitelistSystemAppIds.get(callingAppId) ) {
+                    Slog.d(TAG, "Security violation: " + "Calling app " + UserHandle.formatUid(callingUid) + " is not on whitelist");
+                    return;
                 }
-            }*/
+            }
 
             duration = Math.min(duration, mConstants.MAX_TEMP_APP_WHITELIST_DURATION);
             Pair<MutableLong, String> entry = mTempWhitelistAppIdEndTimes.get(appId);

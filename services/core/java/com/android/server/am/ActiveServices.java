@@ -364,13 +364,33 @@ public final class ActiveServices {
 
         // If this isn't a direct-to-foreground start, check our ability to kick off an
         // arbitrary service
+
+        int allowed = ActivityManager.APP_START_MODE_NORMAL;
+        int blocked = mAm.mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND, r.appInfo.uid, r.packageName);
+        if( blocked == AppOpsManager.MODE_IGNORED ) {
+            fgRequired = false;
+        }
+
+
         if (/*true || !r.startRequested &&*/ !fgRequired) {
             // Before going further -- if this app is not allowed to start services in the
             // background, then at this point we aren't going to let it period.
-            int allowed = mAm.getAppStartModeLocked(false, r.appInfo.uid, r.packageName,
-                    r.appInfo.targetSdkVersion, callingPid, false, false, r.toString());
 
-            if (allowed == ActivityManager.APP_START_MODE_DELAYED) {
+            if( blocked == AppOpsManager.MODE_IGNORED ) {
+                allowed = mAm.checkForegroundUids(callingUid, r.appInfo.uid);
+                if( allowed !=  ActivityManager.APP_START_MODE_NORMAL ) {
+                    if( r.appInfo.targetSdkVersion < Build.VERSION_CODES.O) {
+                        allowed = ActivityManager.APP_START_MODE_DELAYED;
+                    } else {
+                        allowed = ActivityManager.APP_START_MODE_DELAYED_RIGID;
+                    }
+                }
+            } else {
+                allowed = mAm.getAppStartModeLocked(false, r.appInfo.uid, r.packageName,
+                    r.appInfo.targetSdkVersion, callingPid, false, false, r.toString());
+            }
+
+            if (allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) {
                 if( mAm.isWhiteListedService(r.name.getPackageName(),r.name.getClassName()) ) {
                     allowed = ActivityManager.APP_START_MODE_NORMAL;
                     //Slog.i(TAG, "getAppBlocked: allowed " + r.appInfo.uid + "/" + r.name.getPackageName() + ", allowed=MODE_NORMAL, " + r.toString() + ", code whitelisted");    

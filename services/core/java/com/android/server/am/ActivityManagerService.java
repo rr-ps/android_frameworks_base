@@ -4125,6 +4125,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             Slog.i(TAG, buf.toString());
 
             if(hostingType.equals("activity")) {
+
+                /*
                 BoostFramework perf = new BoostFramework();
 
                 if (perf != null) {
@@ -4160,6 +4162,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                    sPerfBoost_v2.perfLockAcquire(lBoost_v2_TimeOut, lBoost_v2_ParamVal);
                    sIsLaunchBoostv2_set = true;
                 }
+                */
             }
 
             app.setPid(startResult.pid);
@@ -7423,6 +7426,8 @@ public class ActivityManagerService extends IActivityManager.Stub
     }
 
     void postFinishBooting(boolean finishBooting, boolean enableScreen) {
+        Slog.w(TAG, "postFinishBooting:" + mBootAnimationComplete + ", finishBooting=" + finishBooting + ", enableScreen=" + enableScreen, new Throwable());
+
         mHandler.sendMessage(mHandler.obtainMessage(FINISH_BOOTING_MSG,
                 finishBooting ? 1 : 0, enableScreen ? 1 : 0));
     }
@@ -7465,13 +7470,20 @@ public class ActivityManagerService extends IActivityManager.Stub
         return mKeyguardController.isKeyguardLocked();
     }
 
+    boolean mFinishingBoot = false;
     final void finishBooting() {
+        Slog.w(TAG, "finishBooting:" + mBootAnimationComplete, new Throwable());
         synchronized (this) {
             if (!mBootAnimationComplete) {
-                mCallFinishBooting = true;
-                return;
+                //mCallFinishBooting = true;
+                //return;
             }
             mCallFinishBooting = false;
+            if( mFinishingBoot ) {
+                Slog.w(TAG, "finishBooting: already booted :" + mBootAnimationComplete, new Throwable());
+                return;
+            }
+            mFinishingBoot = true;
         }
 
         ArraySet<String> completedIsas = new ArraySet<String>();
@@ -7591,6 +7603,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     @Override
     public void bootAnimationComplete() {
+        Slog.v(TAG, "bootAnimationComplete:", new Throwable());
         final boolean callFinishBooting;
         synchronized (this) {
             callFinishBooting = mCallFinishBooting;
@@ -7604,6 +7617,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     }
 
     final void ensureBootCompleted() {
+        Slog.v(TAG, "ensureBootCompleted:" + mBooting);
         boolean booting;
         boolean enableScreen;
         synchronized (this) {
@@ -8762,6 +8776,24 @@ public class ActivityManagerService extends IActivityManager.Stub
         //}
     }
 
+    int checkForegroundUids(int callerUid, int callingUid) {
+        if(!mOnBattery) return ActivityManager.APP_START_MODE_NORMAL;
+        boolean disablePowerSave = SystemProperties.get("persist.pm.idle_disable", "0").equals("1") || 
+                                 ( SystemProperties.get("persist.pm.idle_disable_so", "0").equals("1") && !mDeviceIdleMode ); 
+
+        if( disablePowerSave ) {
+            return ActivityManager.APP_START_MODE_NORMAL;
+        }
+
+        UidRecord callingUidRec = mActiveUids.get(callingUid);
+        UidRecord callerUidRec = mActiveUids.get(callerUid);
+        if( callerUidRec == null ) return ActivityManager.APP_START_MODE_DELAYED;
+        if( callerUidRec.curProcState == 1 || callerUidRec.curProcState == 2 ) return ActivityManager.APP_START_MODE_NORMAL;
+        if( callingUidRec == null ) return ActivityManager.APP_START_MODE_DELAYED;
+        if( callingUidRec.curProcState == 1 || callingUidRec.curProcState == 2 ) return ActivityManager.APP_START_MODE_NORMAL;
+        return ActivityManager.APP_START_MODE_DELAYED;
+    }
+
     // Unified app-op and target sdk check
     int appRestrictedInBackgroundLocked(int uid, String packageName, int packageTargetSdk, boolean idle, String logMsg) {
 
@@ -9181,8 +9213,11 @@ public class ActivityManagerService extends IActivityManager.Stub
 
                 if( act.startsWith("android.bluetooth") ) return true;
 
+
 	    	    if( act.contains("android.net.conn.DATA_ACTIVITY_CHANGE") ) return true;
     	    	if( act.contains("com.google.android.intent.action.GCM_RECONNECT") ) return true;
+    	    	if( act.contains("com.google.android.gcm.CONNECTED") ) return true;
+    	    	if( act.contains("com.google.android.gcm.DISCONNECTED") ) return true;
 
         	    if( act.contains("com.google.android.gms.auth") ) return true;
    	    	    if( act.contains("com.google.android.gms.config") ) return true;
@@ -9193,6 +9228,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     	    	if( act.contains("com.google.android.gms.droidguard") ) return true;
     	    	if( act.contains("com.google.android.gms.deviceconnection") ) return true;
 
+    	    	if( act.contains("android.intent.action.BOOT_COMPLETED") ) return true;
             }
 
 
@@ -24368,8 +24404,12 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
         }
         if (changed) {
+            if( !onWhitelist ) {
+                lastOomAdjTime = 0;
+            }
             updateOomAdjLocked();
         }
+       
     }
 
     final void setUidTempWhitelistStateLocked(int uid, boolean onWhitelist) {

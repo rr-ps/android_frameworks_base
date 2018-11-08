@@ -1235,7 +1235,7 @@ public final class PowerManagerService extends SystemService
 
     private void applyWakeLockFlagsOnAcquireLocked(WakeLock wakeLock, int uid) {
         if (/*(wakeLock.mFlags & PowerManager.ACQUIRE_CAUSES_WAKEUP) != 0
-                && */ isScreenLock(wakeLock)) {
+                &&*/  isScreenLock(wakeLock)) {
             String opPackageName;
             int opUid;
             if (wakeLock.mWorkSource != null && wakeLock.mWorkSource.getName(0) != null) {
@@ -1246,7 +1246,7 @@ public final class PowerManagerService extends SystemService
                 opUid = wakeLock.mWorkSource != null ? wakeLock.mWorkSource.get(0)
                         : wakeLock.mOwnerUid;
             }
-            wakeUpNoUpdateLocked(SystemClock.uptimeMillis(), wakeLock.mTag, opUid,
+            wakeUpNoUpdateLocked(SystemClock.uptimeMillis(), "wakelock:" + wakeLock.mTag, opUid,
                     opPackageName, opUid);
         }
     }
@@ -1560,6 +1560,7 @@ public final class PowerManagerService extends SystemService
             }
 
             mLastWakeTime = eventTime;
+            setWakupReason(reason);
             setWakefulnessLocked(WAKEFULNESS_AWAKE, 0);
 
             mNotifier.onWakeUp(reason, reasonUid, opPackageName, opUid);
@@ -1984,7 +1985,9 @@ public final class PowerManagerService extends SystemService
                         }
                         break;
                     case PowerManager.FULL_WAKE_LOCK:
-                        mWakeLockSummary |= WAKE_LOCK_SCREEN_BRIGHT | WAKE_LOCK_BUTTON_BRIGHT;
+                        if (!wakeLock.mDisabled) {
+                            mWakeLockSummary |= WAKE_LOCK_SCREEN_BRIGHT | WAKE_LOCK_BUTTON_BRIGHT | WAKE_LOCK_CPU;
+                        }
                         break;
                     case PowerManager.SCREEN_BRIGHT_WAKE_LOCK:
                         mWakeLockSummary |= WAKE_LOCK_SCREEN_BRIGHT;
@@ -2841,7 +2844,7 @@ public final class PowerManagerService extends SystemService
     private void updateSuspendBlockerLocked() {
         final boolean needWakeLockSuspendBlocker = mIsPowered || ((mWakeLockSummary & WAKE_LOCK_CPU) != 0);
         final boolean needDisplaySuspendBlocker = needDisplaySuspendBlockerLocked();
-        final boolean autoSuspend = !needDisplaySuspendBlocker;
+        final boolean autoSuspend = !(needDisplaySuspendBlocker || needWakeLockSuspendBlocker);
         final boolean interactive = mDisplayPowerRequest.isBrightOrDim();
         int lowPowerModeState = getLowPowerModeStateLocked();
 
@@ -5610,5 +5613,27 @@ wakeLock.mTag.startsWith("SyncMgr") ||
                 return Arrays.binarySearch(mDeviceIdleTempWhitelistStatic, appid) >= 0;
             }
     }
+
+    static String mLastWakeupReason = "unknown";
+
+    static void setWakupReason(String reason) {
+            Slog.d(TAG, "setWakupReason="+reason);
+            try {
+                SystemProperties.set("power.wake_reason",reason);
+            }
+            catch( Exception e ) {
+                Slog.e(TAG, "SystemPropertiesSet: unable to set property power.wake_reason to " + reason, e);
+            }
+
+            synchronized(mStaticLock) {
+                mLastWakeupReason = reason;
+            }
+    }
+    public static String lastWakeupReason() {
+            synchronized(mStaticLock) {
+                return mLastWakeupReason;
+            }
+    }
 }
+
 

@@ -48,6 +48,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.Process;
 import android.os.RemoteException;
+import android.os.SystemProperties;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.util.EventLog;
@@ -612,6 +613,21 @@ public final class BroadcastQueue {
             skip = true;
         }
 
+        if( !skip && r.appOp == AppOpsManager.OP_BOOT_COMPLETED && !filter.packageName.startsWith("com.google.android.gms") ) {
+            if( mService.mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND,
+                filter.receiverList.uid, filter.packageName) == AppOpsManager.MODE_IGNORED ) {
+                Slog.w(TAG, "Appop Denial: receiving "
+                    + r.intent.toString()
+                    + " to " + filter.receiverList.app
+                    + " (pid=" + filter.receiverList.pid
+                    + ", uid=" + filter.receiverList.uid + ")"
+                    + " requires appop " + AppOpsManager.opToName(AppOpsManager.OP_RUN_IN_BACKGROUND)
+                    + " due to sender " + r.callerPackage
+                    + " (uid " + r.callingUid + ")");
+                skip = true;
+            }
+        }
+
         if( r!=null && r.intent!=null ) {
             mService.updateScreenState(r.intent);
         
@@ -619,7 +635,7 @@ public final class BroadcastQueue {
 
             if (!skip && filter.receiverList.uid >= Process.FIRST_APPLICATION_UID) {
 
-                int allowed = ActivityManager.APP_START_MODE_NORMAL;
+                int allowed = ActivityManager.APP_START_MODE_DELAYED;
 
                 mService.updateScreenState(r.intent);
 
@@ -631,14 +647,29 @@ public final class BroadcastQueue {
                     Slog.e(TAG, "getAppBlocked:(1) Can't get appinfo: from=" + r.callerPackage + " receiving intent=" + r.intent);
                 }    
 
-                allowed = mService.getAppStartModeLocked(true,
+                if( mService.mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND, filter.receiverList.uid, filter.packageName) != AppOpsManager.MODE_IGNORED ) { 
+                    allowed = mService.getAppStartModeLocked(true,
                         filter.receiverList.uid, filter.packageName,
                         targetSdkVersion, r.callingPid, true, false, r.intent.toString() );
 
-                if( allowed == ActivityManager.APP_START_MODE_DELAYED && mService.isWhiteListedIntent(filter.packageName,r.intent) ) {
-                    //Slog.e(TAG, "getAppBlocked:(1) allowed:" + r.callerPackage + " receiving intent=" + r.intent + " whitelisted by code");
-                    allowed = ActivityManager.APP_START_MODE_NORMAL;
+                    if( (PowerManagerService.getGmsUid() == filter.receiverList.uid) &&
+                        (allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) && 
+                        mService.isWhiteListedIntent(filter.packageName,r.intent) ) {
+                        Slog.e(TAG, "getAppBlocked:(1) allowed:" + r.callerPackage + " receiving intent=" + r.intent + " whitelisted by code (1)");
+                        allowed = ActivityManager.APP_START_MODE_NORMAL;
+                    } 
+
                 } 
+                else {
+                    allowed = mService.checkForegroundUids(r.callingUid, filter.receiverList.uid);
+                    if( (PowerManagerService.getGmsUid() == filter.receiverList.uid) &&
+                        (allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) && 
+                        mService.isWhiteListedIntent(filter.packageName,r.intent) ) {
+                        Slog.e(TAG, "getAppBlocked:(1) allowed:" + r.callerPackage + " receiving intent=" + r.intent + " whitelisted by code (2)");
+                        allowed = ActivityManager.APP_START_MODE_NORMAL;
+                    } 
+                }
+
 
                 //final int allowed = mService.getAppStartModeLocked(
                 //         info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
@@ -652,12 +683,11 @@ public final class BroadcastQueue {
                         Slog.w(TAG, "getAppBlocked:(1) Background execution disabled: receiving " + r.intent + " " + filter.receiverList.uid + "/" + filter.packageName);
                         skip = true;
                     } else if ( (r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0
-                            || (r.intent.getComponent() == null
-                                && r.intent.getPackage() == null
-                                && ((r.intent.getFlags()
-                                        & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0)
-                                && !isSignaturePerm(r.requiredPermissions))) {
-                        //mService.addBackgroundCheckViolationLocked(r.intent.getAction(),filter.packageName);
+                                || r.intent.getComponent() == null
+                                || r.intent.getPackage() == null
+                                || (r.intent.getFlags() & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0
+                                || !isSignaturePerm(r.requiredPermissions) ) {
+                        mService.addBackgroundCheckViolationLocked(r.intent.getAction(),filter.packageName);
                         Slog.w(TAG, "getAppBlocked:(1) Background execution not allowed: receiving " + r.intent + " " + filter.receiverList.uid + "/" + filter.packageName);
                         skip = true;
                     }
@@ -823,6 +853,7 @@ public final class BroadcastQueue {
 
         return false;
     }
+
 
     final void scheduleTempWhitelistLocked(int uid, long duration, BroadcastRecord r) {
         
@@ -1313,17 +1344,28 @@ public final class BroadcastQueue {
                 int allowed = ActivityManager.APP_START_MODE_DELAYED;
 
                 boolean enableFgs = app != null && app.thread != null && !app.killed;
-   
-                allowed = mService.getAppStartModeLocked(enableFgs,
-                        info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
-                        info.activityInfo.applicationInfo.targetSdkVersion, r.callingPid, true, false, r.intent.toString() );
 
-                if( ((allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) && mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent) )  ) {
-                    allowed = ActivityManager.APP_START_MODE_NORMAL;
-                    //Slog.i(TAG, "getAppBlocked: allowed " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName + ", allowed=MODE_NORMAL, " + r.intent.toString() + ", code whitelisted");    
+                if( mService.mAppOpsService.noteOperation(AppOpsManager.OP_RUN_IN_BACKGROUND, info.activityInfo.applicationInfo.uid, info.activityInfo.packageName) != AppOpsManager.MODE_IGNORED ) {
+                    allowed = mService.getAppStartModeLocked(enableFgs,
+                            info.activityInfo.applicationInfo.uid, info.activityInfo.packageName,
+                            info.activityInfo.applicationInfo.targetSdkVersion, r.callingPid, true, false, r.intent.toString() );
+
+                    if( (PowerManagerService.getGmsUid() == info.activityInfo.applicationInfo.uid) &&
+                        (allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) && 
+                        mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent)  ) {
+                        allowed = ActivityManager.APP_START_MODE_NORMAL;
+                        Slog.i(TAG, "getAppBlocked: allowed " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName + ", allowed=MODE_NORMAL, " + r.intent.toString() + ", code whitelisted (3)");    
+                    }
+
+                } else {
+                    allowed = mService.checkForegroundUids(r.callingUid, info.activityInfo.applicationInfo.uid);
+                    if( (PowerManagerService.getGmsUid() == info.activityInfo.applicationInfo.uid) &&
+                        (allowed == ActivityManager.APP_START_MODE_DELAYED || allowed == ActivityManager.APP_START_MODE_DELAYED_RIGID ) && 
+                        mService.isWhiteListedIntent(info.activityInfo.packageName,r.intent)  ) {
+                        allowed = ActivityManager.APP_START_MODE_NORMAL;
+                        Slog.i(TAG, "getAppBlocked: allowed " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName + ", allowed=MODE_NORMAL, " + r.intent.toString() + ", code whitelisted (4)");    
+                    }
                 }
-
-
 /*
 
                                 && r.intent.getPackage() == null
@@ -1343,14 +1385,13 @@ public final class BroadcastQueue {
                                 + component.flattenToShortString()
                                 + " " + info.activityInfo.applicationInfo.uid + "/" + info.activityInfo.packageName );
                             skip = true;
-                        } else if (((r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0)
-                            || (r.intent.getComponent() == null
-                                || r.intent.getPackage() == null
-                                || ((r.intent.getFlags()
-                                        & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0)
-                                || !isSignaturePerm(r.requiredPermissions))) {
-                            mService.addBackgroundCheckViolationLocked(r.intent.getAction(),
-                                component.getPackageName());
+                        } else if ( (r.intent.getFlags()&Intent.FLAG_RECEIVER_EXCLUDE_BACKGROUND) != 0
+                                   || r.intent.getComponent() == null
+                                   || r.intent.getPackage() == null
+                                   || (r.intent.getFlags() & Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND) == 0
+                                   || !isSignaturePerm(r.requiredPermissions) ) {
+
+                            mService.addBackgroundCheckViolationLocked(r.intent.getAction(), component.getPackageName());
                             Slog.w(TAG, "getAppBlocked: Background execution not allowed: receiving "
                                 + r.intent + " to "
                                 + component.flattenToShortString()

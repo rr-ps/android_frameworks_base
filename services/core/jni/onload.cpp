@@ -85,7 +85,6 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
     register_android_server_location_GnssLocationProvider(env);
     register_android_server_connectivity_Vpn(env);
     register_android_server_connectivity_tethering_OffloadHardwareInterface(env);
-    register_android_server_devicepolicy_CryptoTestHelper(env);
     register_android_server_BatteryStatsService(env);
     register_android_server_hdmi_HdmiCecController(env);
     register_android_server_tv_TvUinputBridge(env);

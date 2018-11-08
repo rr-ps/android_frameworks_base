@@ -171,6 +171,15 @@ public class SystemSensorManager extends SensorManager {
                        "significant motion sensor");
                 Log.w(TAG,"Here :", new Throwable());
                 return true;
+            } else if (sensor.getType() == Sensor. TYPE_ACCELEROMETER) {
+                String pkgName = mContext.getPackageName();
+                String opPkgName = mContext.getOpPackageName();
+                if(  opPkgName.equals("com.google.android.gms" ) ) {
+                    Log.w(TAG, "Preventing " + pkgName + "(" + opPkgName +") from draining battery using " +
+                       "accelerometer sensor");
+                    Log.w(TAG,"Here :", new Throwable());
+                    return true;
+                }
             }
         }
 
@@ -240,6 +249,15 @@ public class SystemSensorManager extends SensorManager {
                        "significant motion sensor");
                 Log.w(TAG,"Here :", new Throwable());
                 return true;
+            } else if (sensor.getType() == Sensor. TYPE_ACCELEROMETER) {
+                String pkgName = mContext.getPackageName();
+                String opPkgName = mContext.getOpPackageName();
+                if(  opPkgName.equals("com.google.android.gms" ) ) {
+                    Log.w(TAG, "Preventing " + pkgName + "(" + opPkgName +") from draining battery using " +
+                           "accelerometer sensor");
+                    Log.w(TAG,"Here :", new Throwable());
+                    return true;
+                }
             }
         }
 

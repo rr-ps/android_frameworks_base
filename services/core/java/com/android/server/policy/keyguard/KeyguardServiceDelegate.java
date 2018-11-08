@@ -32,7 +32,7 @@ import java.io.PrintWriter;
  */
 public class KeyguardServiceDelegate {
     private static final String TAG = "KeyguardServiceDelegate";
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
 
     private static final int SCREEN_STATE_OFF = 0;
     private static final int SCREEN_STATE_TURNING_ON = 1;
@@ -157,7 +157,7 @@ public class KeyguardServiceDelegate {
     private final ServiceConnection mKeyguardConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            if (DEBUG) Log.v(TAG, "*** Keyguard connected (yay!)");
+            if (DEBUG) Log.v(TAG, "*** Keyguard connected (yay!)", new Throwable());
             mKeyguardService = new KeyguardServiceWrapper(mContext,
                     IKeyguardService.Stub.asInterface(service), mCallback);
             if (mKeyguardState.systemIsReady) {
